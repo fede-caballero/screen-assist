@@ -299,7 +299,7 @@ function handleServerMessage(data) {
    STATUS BAR (top 20%):
      Tap          = toggle slow mode
      Double tap   = reset teleprompter width
-     Drag vert    = adjust teleprompter width
+     Drag horiz   = adjust teleprompter width (right=wider, left=narrower)
    ══════════════════════════════════════════════ */
 const gestureZone = document.getElementById('gestureZone');
 
@@ -453,21 +453,21 @@ gestureZone.addEventListener('touchend', e => {
 
 /* ══════════════════════════════════════════════
    STATUS BAR GESTURES
-   Tap = slow mode | Double tap = reset width | Drag vert = width
+   Tap = slow mode | Double tap = reset width | Drag horiz = width
    ══════════════════════════════════════════════ */
 const statusBar = document.getElementById('statusBar');
-let sbStartY = 0, sbStartTime = 0, sbDragging = false, sbLastY = 0;
+let sbStartX = 0, sbStartTime = 0, sbDragging = false, sbLastX = 0;
 let sbTapCount = 0, sbTapTimer = null;
 const SB_DOUBLE_TAP_WINDOW = 350;
-const SB_WIDTH_STEP = 12; // px of drag per width step
+const SB_WIDTH_STEP = 20; // px of horizontal drag per width step
 
 statusBar.addEventListener('touchstart', e => {
   if (!isConnected) return;
   e.preventDefault();
   e.stopPropagation();
   if (e.touches.length !== 1) return;
-  sbStartY = e.touches[0].clientY;
-  sbLastY = sbStartY;
+  sbStartX = e.touches[0].clientX;
+  sbLastX = sbStartX;
   sbStartTime = Date.now();
   sbDragging = false;
 }, { passive: false });
@@ -477,20 +477,20 @@ statusBar.addEventListener('touchmove', e => {
   e.preventDefault();
   e.stopPropagation();
   if (e.touches.length !== 1) return;
-  const dy = e.touches[0].clientY - sbStartY;
-  if (!sbDragging && Math.abs(dy) > DRAG_THRESHOLD) {
+  const dx = e.touches[0].clientX - sbStartX;
+  if (!sbDragging && Math.abs(dx) > DRAG_THRESHOLD) {
     sbDragging = true;
-    sbLastY = e.touches[0].clientY;
+    sbLastX = e.touches[0].clientX;
   }
   if (sbDragging) {
-    const moved = e.touches[0].clientY - sbLastY;
+    const moved = e.touches[0].clientX - sbLastX;
     if (Math.abs(moved) >= SB_WIDTH_STEP) {
-      // Drag down = narrower, drag up = wider (intuitive: "pull up to expand")
-      const direction = moved < 0 ? 'wider' : 'narrower';
+      // Drag right = wider, drag left = narrower (intuitive: "stretch to expand")
+      const direction = moved > 0 ? 'wider' : 'narrower';
       send({ action: 'teleprompter_width', direction });
       flash(direction === 'wider' ? 'resume' : 'pause');
       vibrate(8);
-      sbLastY = e.touches[0].clientY;
+      sbLastX = e.touches[0].clientX;
     }
   }
 }, { passive: false });
