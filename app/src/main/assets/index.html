@@ -1,671 +1,660 @@
 <!DOCTYPE html>
 <html lang="es">
-
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="mobile-web-app-capable" content="yes">
-  <title>Remote — Teleprompter</title>
-  <style>
-    *,
-    *::before,
-    *::after {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Remote — Teleprompter</title>
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
-    html,
-    body {
-      width: 100vw;
-      height: 100vh;
-      overflow: hidden;
-      background: #0a0e17;
-      color: #e8ecf4;
-      font-family: -apple-system, system-ui, sans-serif;
-      user-select: none;
-      -webkit-user-select: none;
-      touch-action: none;
-      overscroll-behavior: none;
-      -webkit-tap-highlight-color: transparent;
-    }
+html, body {
+  width: 100vw; height: 100vh; overflow: hidden;
+  background: #0a0e17; color: #e8ecf4;
+  font-family: -apple-system, system-ui, sans-serif;
+  user-select: none; -webkit-user-select: none;
+  touch-action: none;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
 
-    /* ── STATUS BAR (top 20%) ── */
-    .status-bar {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 20vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      border-bottom: 1px solid #1e2a3a;
-      background: linear-gradient(180deg, #0f1520 0%, #0a0e17 100%);
-      z-index: 10;
-    }
+/* ── STATUS BAR (top 20%) ── */
+.status-bar {
+  position: fixed; top: 0; left: 0; right: 0;
+  height: 20vh;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 6px;
+  border-bottom: 1px solid #1e2a3a;
+  background: linear-gradient(180deg, #0f1520 0%, #0a0e17 100%);
+  z-index: 10;
+}
 
-    .status-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: #ef4444;
-      transition: background 0.3s, box-shadow 0.3s;
-    }
+.status-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #ef4444;
+  transition: background 0.3s, box-shadow 0.3s;
+}
+.status-dot.connected {
+  background: #00e5a0;
+  box-shadow: 0 0 8px rgba(0, 229, 160, 0.5);
+}
 
-    .status-dot.connected {
-      background: #00e5a0;
-      box-shadow: 0 0 8px rgba(0, 229, 160, 0.5);
-    }
+.status-text {
+  font-size: 14px; font-weight: 600;
+  color: #8892a8; letter-spacing: 0.05em;
+  text-transform: uppercase;
+  transition: color 0.2s;
+}
+.status-text.paused { color: #f59e0b; }
 
-    .status-text {
-      font-size: 14px;
-      font-weight: 600;
-      color: #8892a8;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      transition: color 0.2s;
-    }
+.status-wpm {
+  font-size: 11px; color: #4a5568;
+  font-variant-numeric: tabular-nums;
+}
 
-    .status-text.paused {
-      color: #f59e0b;
-    }
+.status-mode {
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 2px 10px; border-radius: 8px;
+  transition: opacity 0.3s, background 0.3s, color 0.3s;
+}
+.status-mode.slow {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+.status-mode.history {
+  background: rgba(139, 92, 246, 0.15);
+  color: #a78bfa;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+}
+.status-mode.hidden { opacity: 0; pointer-events: none; height: 0; padding: 0; margin: 0; }
 
-    .status-wpm {
-      font-size: 11px;
-      color: #4a5568;
-      font-variant-numeric: tabular-nums;
-    }
+/* ── GESTURE ZONE (bottom 80%) ── */
+.gesture-zone {
+  position: fixed; top: 20vh; left: 0; right: 0; bottom: 0;
+  z-index: 5;
+}
 
-    .status-mode {
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      padding: 2px 10px;
-      border-radius: 8px;
-      transition: opacity 0.3s, background 0.3s, color 0.3s;
-    }
+/* Visual feedback flash — full screen, fades out */
+.feedback-flash {
+  position: fixed; inset: 0;
+  pointer-events: none; z-index: 50;
+  opacity: 0; transition: opacity 0.15s ease-out;
+}
+.feedback-flash.active { opacity: 1; transition: none; }
 
-    .status-mode.slow {
-      background: rgba(245, 158, 11, 0.15);
-      color: #f59e0b;
-      border: 1px solid rgba(245, 158, 11, 0.3);
-    }
+.feedback-flash.pause { background: rgba(245, 158, 11, 0.08); }
+.feedback-flash.resume { background: rgba(0, 229, 160, 0.08); }
+.feedback-flash.scroll-fwd { background: linear-gradient(0deg, rgba(59, 130, 246, 0.1) 0%, transparent 60%); }
+.feedback-flash.scroll-back { background: linear-gradient(180deg, rgba(59, 130, 246, 0.1) 0%, transparent 60%); }
+.feedback-flash.capture { background: rgba(255, 255, 255, 0.1); }
+.feedback-flash.clear { background: rgba(239, 68, 68, 0.12); }
+.feedback-flash.slow-on { background: rgba(245, 158, 11, 0.1); }
+.feedback-flash.slow-off { background: rgba(139, 92, 246, 0.08); }
+.feedback-flash.history-prev { background: linear-gradient(90deg, rgba(139, 92, 246, 0.12) 0%, transparent 50%); }
+.feedback-flash.history-next { background: linear-gradient(270deg, rgba(139, 92, 246, 0.12) 0%, transparent 50%); }
+.feedback-flash.skip { background: rgba(239, 68, 68, 0.08); }
+.feedback-flash.cw-move { background: rgba(96, 165, 250, 0.08); }
+.feedback-flash.cw-resize { background: rgba(0, 229, 160, 0.08); }
 
-    .status-mode.history {
-      background: rgba(139, 92, 246, 0.15);
-      color: #a78bfa;
-      border: 1px solid rgba(139, 92, 246, 0.3);
-    }
+/* ── CONNECTION OVERLAY ── */
+.connect-overlay {
+  position: fixed; inset: 0; background: #0a0e17;
+  z-index: 200; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  transition: opacity 0.4s, visibility 0.4s;
+}
+.connect-overlay.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
 
-    .status-mode.hidden {
-      opacity: 0;
-      pointer-events: none;
-      height: 0;
-      padding: 0;
-      margin: 0;
-    }
+.connect-title {
+  font-size: 14px; font-weight: 700;
+  color: #00e5a0; margin-bottom: 6px;
+  letter-spacing: 0.1em; text-transform: uppercase;
+}
+.connect-sub { font-size: 13px; color: #8892a8; margin-bottom: 20px; }
 
-    /* ── GESTURE ZONE (bottom 80%) ── */
-    .gesture-zone {
-      position: fixed;
-      top: 20vh;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      z-index: 5;
-    }
+.connect-input {
+  width: 260px; padding: 12px 16px; background: #111827;
+  border: 1px solid #1e2a3a; border-radius: 10px;
+  color: #e8ecf4; font-family: monospace;
+  font-size: 14px; text-align: center; outline: none;
+  margin-bottom: 10px;
+}
+.connect-input:focus { border-color: #00e5a0; }
 
-    /* Visual feedback flash — full screen, fades out */
-    .feedback-flash {
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      z-index: 50;
-      opacity: 0;
-      transition: opacity 0.15s ease-out;
-    }
-
-    .feedback-flash.active {
-      opacity: 1;
-      transition: none;
-    }
-
-    .feedback-flash.pause {
-      background: rgba(245, 158, 11, 0.08);
-    }
-
-    .feedback-flash.resume {
-      background: rgba(0, 229, 160, 0.08);
-    }
-
-    .feedback-flash.scroll-fwd {
-      background: linear-gradient(0deg, rgba(59, 130, 246, 0.1) 0%, transparent 60%);
-    }
-
-    .feedback-flash.scroll-back {
-      background: linear-gradient(180deg, rgba(59, 130, 246, 0.1) 0%, transparent 60%);
-    }
-
-    .feedback-flash.capture {
-      background: rgba(255, 255, 255, 0.1);
-    }
-
-    .feedback-flash.clear {
-      background: rgba(239, 68, 68, 0.12);
-    }
-
-    .feedback-flash.slow-on {
-      background: rgba(245, 158, 11, 0.1);
-    }
-
-    .feedback-flash.slow-off {
-      background: rgba(139, 92, 246, 0.08);
-    }
-
-    .feedback-flash.history-prev {
-      background: linear-gradient(90deg, rgba(139, 92, 246, 0.12) 0%, transparent 50%);
-    }
-
-    .feedback-flash.history-next {
-      background: linear-gradient(270deg, rgba(139, 92, 246, 0.12) 0%, transparent 50%);
-    }
-
-    .feedback-flash.skip {
-      background: rgba(239, 68, 68, 0.08);
-    }
-
-    /* ── CONNECTION OVERLAY ── */
-    .connect-overlay {
-      position: fixed;
-      inset: 0;
-      background: #0a0e17;
-      z-index: 200;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      transition: opacity 0.4s, visibility 0.4s;
-    }
-
-    .connect-overlay.hidden {
-      opacity: 0;
-      visibility: hidden;
-      pointer-events: none;
-    }
-
-    .connect-title {
-      font-size: 14px;
-      font-weight: 700;
-      color: #00e5a0;
-      margin-bottom: 6px;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-    }
-
-    .connect-sub {
-      font-size: 13px;
-      color: #8892a8;
-      margin-bottom: 20px;
-    }
-
-    .connect-input {
-      width: 260px;
-      padding: 12px 16px;
-      background: #111827;
-      border: 1px solid #1e2a3a;
-      border-radius: 10px;
-      color: #e8ecf4;
-      font-family: monospace;
-      font-size: 14px;
-      text-align: center;
-      outline: none;
-      margin-bottom: 10px;
-    }
-
-    .connect-input:focus {
-      border-color: #00e5a0;
-    }
-
-    .connect-btn {
-      padding: 10px 32px;
-      background: #00e5a0;
-      color: #0a0e17;
-      border: none;
-      border-radius: 10px;
-      font-weight: 700;
-      font-size: 14px;
-      cursor: pointer;
-    }
-
-    .connect-error {
-      margin-top: 10px;
-      font-size: 12px;
-      color: #ef4444;
-      min-height: 1.4em;
-    }
-  </style>
+.connect-btn {
+  padding: 10px 32px; background: #00e5a0; color: #0a0e17;
+  border: none; border-radius: 10px; font-weight: 700;
+  font-size: 14px; cursor: pointer;
+}
+.connect-error { margin-top: 10px; font-size: 12px; color: #ef4444; min-height: 1.4em; }
+</style>
 </head>
-
 <body>
 
-  <div class="connect-overlay" id="connectOverlay">
-    <div class="connect-title">Remote Control</div>
-    <div class="connect-sub">Conectar al servidor Screen-Assist</div>
-    <input class="connect-input" id="serverInput" type="text" placeholder="192.168.1.x:8765" inputmode="url"
-      autocomplete="off" onkeydown="if(event.key==='Enter')doConnect()">
-    <button class="connect-btn" onclick="doConnect()">Conectar</button>
-    <div class="connect-error" id="connectError"></div>
-  </div>
+<div class="connect-overlay" id="connectOverlay">
+  <div class="connect-title">Remote Control</div>
+  <div class="connect-sub">Conectar al servidor Screen-Assist</div>
+  <input class="connect-input" id="serverInput" type="text" placeholder="192.168.1.x:8765"
+    inputmode="url" autocomplete="off"
+    onkeydown="if(event.key==='Enter')doConnect()">
+  <button class="connect-btn" onclick="doConnect()">Conectar</button>
+  <div class="connect-error" id="connectError"></div>
+</div>
 
-  <div class="status-bar" id="statusBar">
-    <div class="status-dot" id="statusDot"></div>
-    <div class="status-text" id="statusText">DISCONNECTED</div>
-    <div class="status-wpm" id="statusWpm"></div>
-    <div class="status-mode hidden" id="statusMode"></div>
-  </div>
+<div class="status-bar" id="statusBar">
+  <div class="status-dot" id="statusDot"></div>
+  <div class="status-text" id="statusText">DISCONNECTED</div>
+  <div class="status-wpm" id="statusWpm"></div>
+  <div class="status-mode hidden" id="statusMode"></div>
+</div>
 
-  <div class="gesture-zone" id="gestureZone"></div>
+<div class="gesture-zone" id="gestureZone"></div>
 
-  <div class="feedback-flash" id="feedbackFlash"></div>
+<div class="feedback-flash" id="feedbackFlash"></div>
 
-  <script>
-    /* ══════════════════════════════════════════════
-       STATE
-       ══════════════════════════════════════════════ */
-    let ws = null;
-    let isConnected = false;
-    let isPaused = false;
-    let currentWpm = 150;
-    let isSlowMode = false;
-    let historyIndex = -1;   // -1 = live
-    let historyTotal = 0;
+<script>
+/* ══════════════════════════════════════════════
+   STATE
+   ══════════════════════════════════════════════ */
+let ws = null;
+let isConnected = false;
+let isPaused = false;
+let currentWpm = 150;
+let isSlowMode = false;
+let historyIndex = -1;   // -1 = live
+let historyTotal = 0;
 
-    /* ══════════════════════════════════════════════
-       VISUAL + HAPTIC FEEDBACK
-       ══════════════════════════════════════════════ */
-    function flash(type) {
-      const el = document.getElementById('feedbackFlash');
-      el.className = 'feedback-flash ' + type;
-      el.classList.add('active');
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          el.classList.remove('active');
-        });
-      });
-    }
-
-    function vibrate(ms) {
-      if (navigator.vibrate) navigator.vibrate(ms);
-    }
-
-    function updateStatus() {
-      const txt = document.getElementById('statusText');
-      const wpmEl = document.getElementById('statusWpm');
-      const modeEl = document.getElementById('statusMode');
-
-      if (!isConnected) {
-        txt.textContent = 'DISCONNECTED';
-        txt.className = 'status-text';
-        wpmEl.textContent = '';
-        modeEl.className = 'status-mode hidden';
-        return;
-      }
-
-      txt.textContent = isPaused ? 'PAUSED' : 'PLAYING';
-      txt.className = 'status-text' + (isPaused ? ' paused' : '');
-      wpmEl.textContent = currentWpm + ' WPM';
-
-      // Mode indicator: history nav takes priority, then slow mode
-      if (historyIndex >= 0) {
-        modeEl.textContent = '\u25C4 ' + (historyIndex + 1) + '/' + historyTotal + ' \u25BA';
-        modeEl.className = 'status-mode history';
-      } else if (isSlowMode) {
-        modeEl.textContent = 'SLOW MODE';
-        modeEl.className = 'status-mode slow';
-      } else {
-        modeEl.className = 'status-mode hidden';
-      }
-    }
-
-    /* ══════════════════════════════════════════════
-       WEBSOCKET
-       ══════════════════════════════════════════════ */
-    function doConnect() {
-      const input = document.getElementById('serverInput');
-      const err = document.getElementById('connectError');
-      let addr = input.value.trim();
-      if (!addr) { err.textContent = 'Ingresá la IP'; return; }
-      if (!addr.startsWith('ws://') && !addr.startsWith('wss://')) addr = 'ws://' + addr;
-      err.textContent = 'Conectando...';
-
-      try {
-        ws = new WebSocket(addr);
-        ws.onopen = () => {
-          isConnected = true;
-          document.getElementById('connectOverlay').classList.add('hidden');
-          document.getElementById('statusDot').classList.add('connected');
-          localStorage.setItem('remote_server', addr);
-          updateStatus();
-          // Keepalive
-          setInterval(() => {
-            if (ws?.readyState === 1) ws.send(JSON.stringify({ action: 'ping', timestamp: Date.now() }));
-          }, 15000);
-        };
-        ws.onmessage = e => {
-          try { handleServerMessage(JSON.parse(e.data)); } catch (ex) { }
-        };
-        ws.onclose = () => {
-          isConnected = false;
-          document.getElementById('statusDot').classList.remove('connected');
-          updateStatus();
-          setTimeout(() => { if (!isConnected) doConnect(); }, 3000);
-        };
-        ws.onerror = () => { err.textContent = 'No se pudo conectar.'; };
-      } catch (e) { err.textContent = 'Error: ' + e.message; }
-    }
-
-    function send(obj) {
-      if (ws?.readyState === 1) ws.send(JSON.stringify(obj));
-    }
-
-    function handleServerMessage(data) {
-      switch (data.type) {
-        case 'slow_mode_changed':
-          isSlowMode = data.enabled;
-          updateStatus();
-          break;
-
-        case 'history_item':
-          historyIndex = data.index;
-          historyTotal = data.total;
-          updateStatus();
-          break;
-
-        case 'history_live':
-          historyIndex = -1;
-          updateStatus();
-          break;
-
-        case 'audio_buffer_cleared':
-          // Confirmation — flash already shown on gesture
-          break;
-
-        case 'response_question':
-          // New live question arrived — auto-return from history nav
-          if (historyIndex >= 0) {
-            historyIndex = -1;
-            updateStatus();
-          }
-          break;
-      }
-    }
-
-    /* ══════════════════════════════════════════════
-       GESTURE ENGINE
-       ─────────────────────────────────────────────
-       GESTURE ZONE (bottom 80%):
-         Tap          = pause / resume
-         Double tap   = force capture + AI analysis
-         Long press   = clear audio buffer
-         Drag vert    = scroll teleprompter
-         Swipe horiz  = history (right=prev, left=next)
-    
-       STATUS BAR (top 20%):
-         Tap          = toggle slow mode
-         Double tap   = reset teleprompter width
-         Drag horiz   = adjust teleprompter width (right=wider, left=narrower)
-       ══════════════════════════════════════════════ */
-    const gestureZone = document.getElementById('gestureZone');
-
-    // Thresholds
-    const TAP_MAX_MOVE = 12;
-    const DRAG_THRESHOLD = 15;
-    const SCROLL_SEND_THRESHOLD = 8;
-    const DOUBLE_TAP_WINDOW = 350;   // ms between taps for double-tap
-    const LONG_PRESS_MS = 600;       // ms hold for long press
-    const SWIPE_MIN_PX = 60;         // min horizontal distance for swipe
-    const SWIPE_MAX_MS = 400;        // max duration for swipe gesture
-
-    // State — gesture zone (1 finger only)
-    let startX = 0, startY = 0, startTime = 0;
-    let lastY = 0;
-    let isDragging = false;
-    let gestureDirection = null;  // null | 'vertical' | 'horizontal'
-    let longPressTimer = null;
-    let longPressFired = false;
-    let tapCount = 0;
-    let tapTimer = null;
-
-    function cancelLongPress() {
-      if (longPressTimer) {
-        clearTimeout(longPressTimer);
-        longPressTimer = null;
-      }
-    }
-
-    gestureZone.addEventListener('touchstart', e => {
-      e.preventDefault();
-      if (e.touches.length !== 1) return;  // Only 1-finger gestures in this zone
-      const t = e.touches[0];
-      startX = t.clientX;
-      startY = t.clientY;
-      lastY = t.clientY;
-      startTime = Date.now();
-      isDragging = false;
-      gestureDirection = null;
-      longPressFired = false;
-
-      // Start long press timer
-      longPressTimer = setTimeout(() => {
-        longPressFired = true;
-        longPressTimer = null;
-        // ── LONG PRESS: Clear audio buffer ──
-        send({ action: 'clear_audio_buffer' });
-        flash('clear');
-        vibrate([50, 30, 50]);
-      }, LONG_PRESS_MS);
-    }, { passive: false });
-
-    gestureZone.addEventListener('touchmove', e => {
-      e.preventDefault();
-      if (e.touches.length !== 1) return;
-      const t = e.touches[0];
-      const dx = t.clientX - startX;
-      const dy = t.clientY - startY;
-
-      // Cancel long press on any significant movement
-      if (Math.abs(dx) > TAP_MAX_MOVE || Math.abs(dy) > TAP_MAX_MOVE) {
-        cancelLongPress();
-      }
-
-      // Lock direction on first significant movement
-      if (!gestureDirection && (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD)) {
-        gestureDirection = Math.abs(dx) > Math.abs(dy) ? 'horizontal' : 'vertical';
-        if (gestureDirection === 'vertical') lastY = t.clientY;
-      }
-
-      if (gestureDirection === 'vertical') {
-        isDragging = true;
-        const moved = t.clientY - lastY;
-        if (Math.abs(moved) >= SCROLL_SEND_THRESHOLD) {
-          send({ action: 'teleprompter_scroll', delta: -Math.round(moved * 1.5) });
-          lastY = t.clientY;
-        }
-      } else if (gestureDirection === 'horizontal') {
-        isDragging = true;
-        // Track but act on touchend
-      }
-    }, { passive: false });
-
-    gestureZone.addEventListener('touchend', e => {
-      e.preventDefault();
-      cancelLongPress();
-      if (e.touches.length > 0) return;
-
-      const elapsed = Date.now() - startTime;
-      const endX = e.changedTouches[0]?.clientX || startX;
-      const totalDx = endX - startX;
-
-      // Long press already handled
-      if (longPressFired) {
-        isDragging = false;
-        gestureDirection = null;
-        return;
-      }
-
-      // ── HORIZONTAL SWIPE: History navigation ──
-      // Right = go back (prev), Left = go forward (next)
-      if (gestureDirection === 'horizontal' && Math.abs(totalDx) > SWIPE_MIN_PX && elapsed < SWIPE_MAX_MS) {
-        if (totalDx > 0) {
-          send({ action: 'history_navigate', direction: 'prev' });
-          flash('history-prev');
-          vibrate(20);
-        } else {
-          send({ action: 'history_navigate', direction: 'next' });
-          flash('history-next');
-          vibrate(20);
-        }
-        isDragging = false;
-        gestureDirection = null;
-        return;
-      }
-
-      // ── VERTICAL DRAG end ──
-      if (gestureDirection === 'vertical' && isDragging) {
-        vibrate(10);
-        isDragging = false;
-        gestureDirection = null;
-        return;
-      }
-
-      // ── TAP / DOUBLE TAP detection ──
-      if (!isDragging && elapsed < 400) {
-        tapCount++;
-        if (tapCount === 1) {
-          tapTimer = setTimeout(() => {
-            tapCount = 0;
-            // ── SINGLE TAP: Toggle pause ──
-            isPaused = !isPaused;
-            send({ action: 'teleprompter_pause' });
-            flash(isPaused ? 'pause' : 'resume');
-            vibrate(isPaused ? [30, 50, 30] : 15);
-            updateStatus();
-          }, DOUBLE_TAP_WINDOW);
-        } else if (tapCount >= 2) {
-          // ── DOUBLE TAP: Force capture + AI ──
-          clearTimeout(tapTimer);
-          tapCount = 0;
-          send({ action: 'force_capture' });
-          flash('capture');
-          vibrate([20, 40, 20]);
-        }
-      }
-
-      isDragging = false;
-      gestureDirection = null;
-    }, { passive: false });
-
-    /* ══════════════════════════════════════════════
-       STATUS BAR GESTURES
-       Tap = slow mode | Double tap = reset width | Drag horiz = width
-       ══════════════════════════════════════════════ */
-    const statusBar = document.getElementById('statusBar');
-    let sbStartX = 0, sbStartTime = 0, sbDragging = false, sbLastX = 0;
-    let sbTapCount = 0, sbTapTimer = null;
-    const SB_DOUBLE_TAP_WINDOW = 350;
-    const SB_WIDTH_STEP = 20; // px of horizontal drag per width step
-
-    statusBar.addEventListener('touchstart', e => {
-      if (!isConnected) return;
-      e.preventDefault();
-      e.stopPropagation();
-      if (e.touches.length !== 1) return;
-      sbStartX = e.touches[0].clientX;
-      sbLastX = sbStartX;
-      sbStartTime = Date.now();
-      sbDragging = false;
-    }, { passive: false });
-
-    statusBar.addEventListener('touchmove', e => {
-      if (!isConnected) return;
-      e.preventDefault();
-      e.stopPropagation();
-      if (e.touches.length !== 1) return;
-      const dx = e.touches[0].clientX - sbStartX;
-      if (!sbDragging && Math.abs(dx) > DRAG_THRESHOLD) {
-        sbDragging = true;
-        sbLastX = e.touches[0].clientX;
-      }
-      if (sbDragging) {
-        const moved = e.touches[0].clientX - sbLastX;
-        if (Math.abs(moved) >= SB_WIDTH_STEP) {
-          // Drag right = wider, drag left = narrower (intuitive: "stretch to expand")
-          const direction = moved > 0 ? 'wider' : 'narrower';
-          send({ action: 'teleprompter_width', direction });
-          flash(direction === 'wider' ? 'resume' : 'pause');
-          vibrate(8);
-          sbLastX = e.touches[0].clientX;
-        }
-      }
-    }, { passive: false });
-
-    statusBar.addEventListener('touchend', e => {
-      if (!isConnected) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const elapsed = Date.now() - sbStartTime;
-
-      if (!sbDragging && elapsed < 400) {
-        sbTapCount++;
-        if (sbTapCount === 1) {
-          sbTapTimer = setTimeout(() => {
-            sbTapCount = 0;
-            // ── SINGLE TAP: Toggle slow mode ──
-            isSlowMode = !isSlowMode;
-            send({ action: 'set_slow_mode', enabled: isSlowMode });
-            flash(isSlowMode ? 'slow-on' : 'slow-off');
-            vibrate(isSlowMode ? [20, 30, 20] : 15);
-            updateStatus();
-          }, SB_DOUBLE_TAP_WINDOW);
-        } else if (sbTapCount >= 2) {
-          // ── DOUBLE TAP: Reset width ──
-          clearTimeout(sbTapTimer);
-          sbTapCount = 0;
-          send({ action: 'teleprompter_width', direction: 'reset' });
-          flash('capture');
-          vibrate([15, 30, 15]);
-        }
-      }
-      sbDragging = false;
-    }, { passive: false });
-
-    // Prevent pull-to-refresh and other default touch behaviors globally
-    document.addEventListener('touchmove', e => {
-      if (e.target.closest('.connect-overlay')) return;
-      e.preventDefault();
-    }, { passive: false });
-
-    /* ══════════════════════════════════════════════
-       INIT
-       ══════════════════════════════════════════════ */
-    document.addEventListener('DOMContentLoaded', () => {
-      const saved = localStorage.getItem('remote_server');
-      if (saved) document.getElementById('serverInput').value = saved.replace('ws://', '');
-      updateStatus();
-
-      // Fullscreen on first tap (mobile browsers)
-      document.body.addEventListener('click', () => {
-        if (document.fullscreenEnabled && !document.fullscreenElement) {
-          document.documentElement.requestFullscreen().catch(() => { });
-        }
-      }, { once: true });
+/* ══════════════════════════════════════════════
+   VISUAL + HAPTIC FEEDBACK
+   ══════════════════════════════════════════════ */
+function flash(type) {
+  const el = document.getElementById('feedbackFlash');
+  el.className = 'feedback-flash ' + type;
+  el.classList.add('active');
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      el.classList.remove('active');
     });
-  </script>
-</body>
+  });
+}
 
+function vibrate(ms) {
+  if (navigator.vibrate) navigator.vibrate(ms);
+}
+
+function updateStatus() {
+  const txt = document.getElementById('statusText');
+  const wpmEl = document.getElementById('statusWpm');
+  const modeEl = document.getElementById('statusMode');
+
+  if (!isConnected) {
+    txt.textContent = 'DISCONNECTED';
+    txt.className = 'status-text';
+    wpmEl.textContent = '';
+    modeEl.className = 'status-mode hidden';
+    return;
+  }
+
+  txt.textContent = isPaused ? 'PAUSED' : 'PLAYING';
+  txt.className = 'status-text' + (isPaused ? ' paused' : '');
+  wpmEl.textContent = currentWpm + ' WPM';
+
+  // Mode indicator: history nav takes priority, then slow mode
+  if (historyIndex >= 0) {
+    modeEl.textContent = '\u25C4 ' + (historyIndex + 1) + '/' + historyTotal + ' \u25BA';
+    modeEl.className = 'status-mode history';
+  } else if (isSlowMode) {
+    modeEl.textContent = 'SLOW MODE';
+    modeEl.className = 'status-mode slow';
+  } else {
+    modeEl.className = 'status-mode hidden';
+  }
+}
+
+/* ══════════════════════════════════════════════
+   WEBSOCKET
+   ══════════════════════════════════════════════ */
+function doConnect() {
+  const input = document.getElementById('serverInput');
+  const err = document.getElementById('connectError');
+  let addr = input.value.trim();
+  if (!addr) { err.textContent = 'Ingresá la IP'; return; }
+  if (!addr.startsWith('ws://') && !addr.startsWith('wss://')) addr = 'ws://' + addr;
+  err.textContent = 'Conectando...';
+
+  try {
+    ws = new WebSocket(addr);
+    ws.onopen = () => {
+      isConnected = true;
+      document.getElementById('connectOverlay').classList.add('hidden');
+      document.getElementById('statusDot').classList.add('connected');
+      localStorage.setItem('remote_server', addr);
+      updateStatus();
+      // Keepalive
+      setInterval(() => {
+        if (ws?.readyState === 1) ws.send(JSON.stringify({ action: 'ping', timestamp: Date.now() }));
+      }, 15000);
+    };
+    ws.onmessage = e => {
+      try { handleServerMessage(JSON.parse(e.data)); } catch(ex) {}
+    };
+    ws.onclose = () => {
+      isConnected = false;
+      document.getElementById('statusDot').classList.remove('connected');
+      updateStatus();
+      setTimeout(() => { if (!isConnected) doConnect(); }, 3000);
+    };
+    ws.onerror = () => { err.textContent = 'No se pudo conectar.'; };
+  } catch(e) { err.textContent = 'Error: ' + e.message; }
+}
+
+function send(obj) {
+  if (ws?.readyState === 1) ws.send(JSON.stringify(obj));
+}
+
+function handleServerMessage(data) {
+  switch (data.type) {
+    case 'slow_mode_changed':
+      isSlowMode = data.enabled;
+      updateStatus();
+      break;
+
+    case 'history_item':
+      historyIndex = data.index;
+      historyTotal = data.total;
+      updateStatus();
+      break;
+
+    case 'history_live':
+      historyIndex = -1;
+      updateStatus();
+      break;
+
+    case 'audio_buffer_cleared':
+      // Confirmation — flash already shown on gesture
+      break;
+
+    case 'response_question':
+      // New live question arrived — auto-return from history nav
+      if (historyIndex >= 0) {
+        historyIndex = -1;
+        updateStatus();
+      }
+      break;
+  }
+}
+
+/* ══════════════════════════════════════════════
+   GESTURE ENGINE
+   ─────────────────────────────────────────────
+   GESTURE ZONE (bottom 80%):
+     Tap          = pause / resume
+     Double tap   = force capture + AI analysis
+     Long press   = clear audio buffer
+     Drag vert    = scroll teleprompter
+     Swipe horiz  = history (right=prev, left=next)
+
+   STATUS BAR (top 20%):
+     Tap          = toggle slow mode
+     Double tap   = reset teleprompter width
+     Drag horiz   = adjust teleprompter width (right=wider, left=narrower)
+   ══════════════════════════════════════════════ */
+const gestureZone = document.getElementById('gestureZone');
+
+// Thresholds
+const TAP_MAX_MOVE = 12;
+const DRAG_THRESHOLD = 15;
+const SCROLL_SEND_THRESHOLD = 8;
+const DOUBLE_TAP_WINDOW = 350;   // ms between taps for double-tap
+const LONG_PRESS_MS = 600;       // ms hold for long press
+const SWIPE_MIN_PX = 60;         // min horizontal distance for swipe
+const SWIPE_MAX_MS = 400;        // max duration for swipe gesture
+
+// State — gesture zone (1 finger only)
+let startX = 0, startY = 0, startTime = 0;
+let lastY = 0;
+let isDragging = false;
+let gestureDirection = null;  // null | 'vertical' | 'horizontal'
+let longPressTimer = null;
+let longPressFired = false;
+let tapCount = 0;
+let tapTimer = null;
+let twoFingerWasUsed = false;  // blocks 1-finger gestures until clean new touch
+
+function cancelLongPress() {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+}
+
+gestureZone.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (e.touches.length !== 1 || twoFingerActive) return;  // Only 1-finger gestures in this zone
+  twoFingerWasUsed = false;  // Clean 1-finger start — allow gestures again
+  const t = e.touches[0];
+  startX = t.clientX;
+  startY = t.clientY;
+  lastY = t.clientY;
+  startTime = Date.now();
+  isDragging = false;
+  gestureDirection = null;
+  longPressFired = false;
+
+  // Start long press timer
+  longPressTimer = setTimeout(() => {
+    longPressFired = true;
+    longPressTimer = null;
+    // ── LONG PRESS: Clear audio buffer ──
+    send({ action: 'clear_audio_buffer' });
+    flash('clear');
+    vibrate([50, 30, 50]);
+  }, LONG_PRESS_MS);
+}, { passive: false });
+
+gestureZone.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (e.touches.length !== 1 || twoFingerActive) return;
+  const t = e.touches[0];
+  const dx = t.clientX - startX;
+  const dy = t.clientY - startY;
+
+  // Cancel long press on any significant movement
+  if (Math.abs(dx) > TAP_MAX_MOVE || Math.abs(dy) > TAP_MAX_MOVE) {
+    cancelLongPress();
+  }
+
+  // Lock direction on first significant movement
+  if (!gestureDirection && (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD)) {
+    gestureDirection = Math.abs(dx) > Math.abs(dy) ? 'horizontal' : 'vertical';
+    if (gestureDirection === 'vertical') lastY = t.clientY;
+  }
+
+  if (gestureDirection === 'vertical') {
+    isDragging = true;
+    const moved = t.clientY - lastY;
+    if (Math.abs(moved) >= SCROLL_SEND_THRESHOLD) {
+      send({ action: 'teleprompter_scroll', delta: -Math.round(moved * 1.5) });
+      lastY = t.clientY;
+    }
+  } else if (gestureDirection === 'horizontal') {
+    isDragging = true;
+    // Track but act on touchend
+  }
+}, { passive: false });
+
+gestureZone.addEventListener('touchend', e => {
+  e.preventDefault();
+  cancelLongPress();
+  if (e.touches.length > 0) return;
+
+  // If 2-finger gesture was active, discard this touchend entirely
+  if (twoFingerWasUsed) {
+    isDragging = false;
+    gestureDirection = null;
+    return;
+  }
+
+  const elapsed = Date.now() - startTime;
+  const endX = e.changedTouches[0]?.clientX || startX;
+  const totalDx = endX - startX;
+
+  // Long press already handled
+  if (longPressFired) {
+    isDragging = false;
+    gestureDirection = null;
+    return;
+  }
+
+  // ── HORIZONTAL SWIPE: History navigation ──
+  // Right = go back (prev), Left = go forward (next)
+  if (gestureDirection === 'horizontal' && Math.abs(totalDx) > SWIPE_MIN_PX && elapsed < SWIPE_MAX_MS) {
+    if (totalDx > 0) {
+      send({ action: 'history_navigate', direction: 'prev' });
+      flash('history-prev');
+      vibrate(20);
+    } else {
+      send({ action: 'history_navigate', direction: 'next' });
+      flash('history-next');
+      vibrate(20);
+    }
+    isDragging = false;
+    gestureDirection = null;
+    return;
+  }
+
+  // ── VERTICAL DRAG end ──
+  if (gestureDirection === 'vertical' && isDragging) {
+    vibrate(10);
+    isDragging = false;
+    gestureDirection = null;
+    return;
+  }
+
+  // ── TAP / DOUBLE TAP detection ──
+  if (!isDragging && elapsed < 400) {
+    tapCount++;
+    if (tapCount === 1) {
+      tapTimer = setTimeout(() => {
+        tapCount = 0;
+        // ── SINGLE TAP: Toggle pause ──
+        isPaused = !isPaused;
+        send({ action: 'teleprompter_pause' });
+        flash(isPaused ? 'pause' : 'resume');
+        vibrate(isPaused ? [30, 50, 30] : 15);
+        updateStatus();
+      }, DOUBLE_TAP_WINDOW);
+    } else if (tapCount >= 2) {
+      // ── DOUBLE TAP: Force capture + AI ──
+      clearTimeout(tapTimer);
+      tapCount = 0;
+      send({ action: 'force_capture' });
+      flash('capture');
+      vibrate([20, 40, 20]);
+    }
+  }
+
+  isDragging = false;
+  gestureDirection = null;
+}, { passive: false });
+
+/* ══════════════════════════════════════════════
+   TWO-FINGER GESTURES (code window)
+   ─────────────────────────────────────────────
+   2-finger scroll        = move code window (dx/dy)
+   2-finger hold (static) = resize mode (PC cursor controls size)
+   ══════════════════════════════════════════════ */
+const CW_MOVE_THRESHOLD = 6;        // px of finger movement before sending move
+const CW_HOLD_STATIC_MS = 400;      // ms fingers must stay still to enter resize mode
+
+let twoFingerActive = false;
+let twoFingerStartMidX = 0, twoFingerStartMidY = 0;
+let twoFingerLastMidX = 0, twoFingerLastMidY = 0;
+let twoFingerMoved = false;
+let cwResizeMode = false;
+let cwHoldTimer = null;
+
+function cancelCwHold() {
+  if (cwHoldTimer) { clearTimeout(cwHoldTimer); cwHoldTimer = null; }
+}
+
+function twoFingerMid(touches) {
+  return {
+    x: (touches[0].clientX + touches[1].clientX) / 2,
+    y: (touches[0].clientY + touches[1].clientY) / 2
+  };
+}
+
+document.addEventListener('touchstart', e => {
+  if (e.target.closest('.connect-overlay')) return;
+  if (e.touches.length === 2) {
+    e.preventDefault();
+    twoFingerActive = true;
+    twoFingerMoved = false;
+    twoFingerWasUsed = true;
+    cwResizeMode = false;
+    const mid = twoFingerMid(e.touches);
+    twoFingerStartMidX = mid.x;
+    twoFingerStartMidY = mid.y;
+    twoFingerLastMidX = mid.x;
+    twoFingerLastMidY = mid.y;
+
+    // Cancel any 1-finger gesture in progress
+    cancelLongPress();
+    isDragging = false;
+    gestureDirection = null;
+    longPressFired = false;
+
+    // Start hold timer for resize mode
+    cwHoldTimer = setTimeout(() => {
+      cwHoldTimer = null;
+      if (twoFingerActive && !twoFingerMoved) {
+        cwResizeMode = true;
+        send({ action: 'code_window_resize_start' });
+        flash('cw-resize');
+        vibrate([30, 20, 30]);
+      }
+    }, CW_HOLD_STATIC_MS);
+  }
+}, { passive: false });
+
+document.addEventListener('touchmove', e => {
+  if (e.target.closest('.connect-overlay')) return;
+  if (twoFingerActive && e.touches.length === 2) {
+    e.preventDefault();
+
+    if (cwResizeMode) return; // In resize mode, PC cursor does the work
+
+    const mid = twoFingerMid(e.touches);
+    const dx = mid.x - twoFingerLastMidX;
+    const dy = mid.y - twoFingerLastMidY;
+
+    if (Math.abs(mid.x - twoFingerStartMidX) > CW_MOVE_THRESHOLD ||
+        Math.abs(mid.y - twoFingerStartMidY) > CW_MOVE_THRESHOLD) {
+      twoFingerMoved = true;
+      cancelCwHold();
+    }
+
+    if (twoFingerMoved && (Math.abs(dx) >= CW_MOVE_THRESHOLD || Math.abs(dy) >= CW_MOVE_THRESHOLD)) {
+      send({ action: 'code_window_move', dx: Math.round(dx * 2), dy: Math.round(dy * 2) });
+      twoFingerLastMidX = mid.x;
+      twoFingerLastMidY = mid.y;
+    }
+  }
+}, { passive: false });
+
+document.addEventListener('touchend', e => {
+  if (e.target.closest('.connect-overlay')) return;
+  if (twoFingerActive && e.touches.length < 2) {
+    cancelCwHold();
+    if (cwResizeMode) {
+      send({ action: 'code_window_resize_stop' });
+      cwResizeMode = false;
+    }
+    twoFingerActive = false;
+    twoFingerMoved = false;
+  }
+}, { passive: false });
+
+/* ══════════════════════════════════════════════
+   STATUS BAR GESTURES
+   Tap = slow mode | Double tap = reset width | Drag horiz = width
+   ══════════════════════════════════════════════ */
+const statusBar = document.getElementById('statusBar');
+let sbStartX = 0, sbStartTime = 0, sbDragging = false, sbLastX = 0;
+let sbTapCount = 0, sbTapTimer = null;
+const SB_DOUBLE_TAP_WINDOW = 350;
+const SB_WIDTH_STEP = 20; // px of horizontal drag per width step
+
+statusBar.addEventListener('touchstart', e => {
+  if (!isConnected) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.touches.length !== 1) return;
+  sbStartX = e.touches[0].clientX;
+  sbLastX = sbStartX;
+  sbStartTime = Date.now();
+  sbDragging = false;
+}, { passive: false });
+
+statusBar.addEventListener('touchmove', e => {
+  if (!isConnected) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.touches.length !== 1) return;
+  const dx = e.touches[0].clientX - sbStartX;
+  if (!sbDragging && Math.abs(dx) > DRAG_THRESHOLD) {
+    sbDragging = true;
+    sbLastX = e.touches[0].clientX;
+  }
+  if (sbDragging) {
+    const moved = e.touches[0].clientX - sbLastX;
+    if (Math.abs(moved) >= SB_WIDTH_STEP) {
+      // Drag right = wider, drag left = narrower (intuitive: "stretch to expand")
+      const direction = moved > 0 ? 'wider' : 'narrower';
+      send({ action: 'teleprompter_width', direction });
+      flash(direction === 'wider' ? 'resume' : 'pause');
+      vibrate(8);
+      sbLastX = e.touches[0].clientX;
+    }
+  }
+}, { passive: false });
+
+statusBar.addEventListener('touchend', e => {
+  if (!isConnected) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const elapsed = Date.now() - sbStartTime;
+
+  if (!sbDragging && elapsed < 400) {
+    sbTapCount++;
+    if (sbTapCount === 1) {
+      sbTapTimer = setTimeout(() => {
+        sbTapCount = 0;
+        // ── SINGLE TAP: Toggle slow mode ──
+        isSlowMode = !isSlowMode;
+        send({ action: 'set_slow_mode', enabled: isSlowMode });
+        flash(isSlowMode ? 'slow-on' : 'slow-off');
+        vibrate(isSlowMode ? [20, 30, 20] : 15);
+        updateStatus();
+      }, SB_DOUBLE_TAP_WINDOW);
+    } else if (sbTapCount >= 2) {
+      // ── DOUBLE TAP: Reset width ──
+      clearTimeout(sbTapTimer);
+      sbTapCount = 0;
+      send({ action: 'teleprompter_width', direction: 'reset' });
+      flash('capture');
+      vibrate([15, 30, 15]);
+    }
+  }
+  sbDragging = false;
+}, { passive: false });
+
+// Prevent pull-to-refresh and other default touch behaviors globally
+document.addEventListener('touchmove', e => {
+  if (e.target.closest('.connect-overlay')) return;
+  e.preventDefault();
+}, { passive: false });
+
+/* ══════════════════════════════════════════════
+   INIT
+   ══════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem('remote_server');
+  if (saved) document.getElementById('serverInput').value = saved.replace('ws://', '');
+  updateStatus();
+
+  // Fullscreen on first tap (mobile browsers)
+  document.body.addEventListener('click', () => {
+    if (document.fullscreenEnabled && !document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+  }, { once: true });
+});
+</script>
+</body>
 </html>
