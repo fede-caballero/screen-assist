@@ -2,659 +2,1615 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<title>Remote — Teleprompter</title>
-<style>
-*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0e17">
+<link rel="manifest" href="manifest.json">
+<title>Screen-Assist</title>
 
-html, body {
-  width: 100vw; height: 100vh; overflow: hidden;
-  background: #0a0e17; color: #e8ecf4;
-  font-family: -apple-system, system-ui, sans-serif;
-  user-select: none; -webkit-user-select: none;
-  touch-action: none;
-  overscroll-behavior: none;
-  -webkit-tap-highlight-color: transparent;
+<!-- Fonts: JetBrains Mono for code feel + DM Sans for readability -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+/* ══════════════════════════════════════════════
+   CSS VARIABLES — THE CONTROL PANEL
+   ══════════════════════════════════════════════ */
+:root {
+  /* Deep space dark theme — not pure black, has depth */
+  --bg-primary: #0a0e17;
+  --bg-card: #111827;
+  --bg-card-hover: #1a2235;
+  --bg-code: #0d1321;
+  --bg-input: #161d2e;
+  
+  /* Accent: electric green — high contrast on dark, signals "active/live" */
+  --accent: #00e5a0;
+  --accent-dim: #00e5a033;
+  --accent-glow: #00e5a066;
+  
+  /* Secondary accent: amber for warnings/deep mode */
+  --accent-deep: #f59e0b;
+  --accent-deep-dim: #f59e0b33;
+  
+  /* Text hierarchy */
+  --text-primary: #e8ecf4;
+  --text-secondary: #8892a8;
+  --text-muted: #4a5568;
+  --text-code: #c8d6e5;
+  
+  /* Status colors */
+  --status-connected: #00e5a0;
+  --status-disconnected: #ef4444;
+  --status-processing: #f59e0b;
+  
+  /* Borders */
+  --border: #1e2a3a;
+  --border-accent: #00e5a044;
+  
+  /* Spacing for mobile */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  
+  /* Card animation */
+  --card-enter: 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* ── STATUS BAR (top 20%) ── */
-.status-bar {
-  position: fixed; top: 0; left: 0; right: 0;
-  height: 20vh;
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  gap: 6px;
-  border-bottom: 1px solid #1e2a3a;
-  background: linear-gradient(180deg, #0f1520 0%, #0a0e17 100%);
-  z-index: 10;
+/* ══════════════════════════════════════════════
+   RESET & BASE
+   ══════════════════════════════════════════════ */
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 15px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100dvh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Subtle scanline effect for HUD feel */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 229, 160, 0.008) 2px,
+    rgba(0, 229, 160, 0.008) 4px
+  );
+  z-index: 9999;
+}
+
+/* ══════════════════════════════════════════════
+   HEADER — STATUS BAR
+   ══════════════════════════════════════════════ */
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  padding: calc(var(--safe-top) + 8px) 16px 10px;
+  background: linear-gradient(180deg, var(--bg-primary) 60%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
 }
 
 .status-dot {
-  width: 10px; height: 10px; border-radius: 50%;
-  background: #ef4444;
-  transition: background 0.3s, box-shadow 0.3s;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status-disconnected);
+  transition: background 0.3s;
 }
+
 .status-dot.connected {
-  background: #00e5a0;
-  box-shadow: 0 0 8px rgba(0, 229, 160, 0.5);
+  background: var(--status-connected);
+  box-shadow: 0 0 8px var(--accent-glow);
+  animation: pulse-dot 2s ease-in-out infinite;
 }
 
-.status-text {
-  font-size: 14px; font-weight: 600;
-  color: #8892a8; letter-spacing: 0.05em;
+.status-dot.processing {
+  background: var(--status-processing);
+  animation: pulse-dot 0.6s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.header-stats {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  display: flex;
+  gap: 12px;
+}
+
+.stat-value {
+  color: var(--text-secondary);
+}
+
+/* ══════════════════════════════════════════════
+   MAIN CONTENT — RESPONSE CARDS
+   ══════════════════════════════════════════════ */
+.main {
+  padding: 8px 12px calc(var(--safe-bottom) + 80px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── Response Card ─────────────────────────── */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  animation: card-enter var(--card-enter) both;
+  position: relative;
+}
+
+.card.priority-deep {
+  border-color: var(--accent-deep-dim);
+}
+
+.card.priority-quick {
+  border-color: var(--border-accent);
+}
+
+/* TTL progress bar at top of card */
+.card-ttl {
+  height: 2px;
+  background: var(--accent);
+  width: 100%;
+  transform-origin: left;
+  transition: transform linear;
+}
+
+.card.priority-deep .card-ttl {
+  background: var(--accent-deep);
+}
+
+.card-header {
+  padding: 12px 14px 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.card-query {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  font-style: italic;
+  line-height: 1.4;
+  flex: 1;
+}
+
+.card-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.6rem;
+  font-weight: 600;
   text-transform: uppercase;
-  transition: color 0.2s;
-}
-.status-text.paused { color: #f59e0b; }
-
-.status-wpm {
-  font-size: 11px; color: #4a5568;
-  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+  padding: 3px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
-.status-mode {
-  font-size: 10px; font-weight: 700;
-  letter-spacing: 0.1em; text-transform: uppercase;
-  padding: 2px 10px; border-radius: 8px;
-  transition: opacity 0.3s, background 0.3s, color 0.3s;
-}
-.status-mode.slow {
-  background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
-  border: 1px solid rgba(245, 158, 11, 0.3);
-}
-.status-mode.history {
-  background: rgba(139, 92, 246, 0.15);
-  color: #a78bfa;
-  border: 1px solid rgba(139, 92, 246, 0.3);
-}
-.status-mode.hidden { opacity: 0; pointer-events: none; height: 0; padding: 0; margin: 0; }
-
-/* ── GESTURE ZONE (bottom 80%) ── */
-.gesture-zone {
-  position: fixed; top: 20vh; left: 0; right: 0; bottom: 0;
-  z-index: 5;
+.card-badge.quick {
+  background: var(--accent-dim);
+  color: var(--accent);
 }
 
-/* Visual feedback flash — full screen, fades out */
-.feedback-flash {
-  position: fixed; inset: 0;
-  pointer-events: none; z-index: 50;
-  opacity: 0; transition: opacity 0.15s ease-out;
+.card-badge.deep {
+  background: var(--accent-deep-dim);
+  color: var(--accent-deep);
 }
-.feedback-flash.active { opacity: 1; transition: none; }
 
-.feedback-flash.pause { background: rgba(245, 158, 11, 0.08); }
-.feedback-flash.resume { background: rgba(0, 229, 160, 0.08); }
-.feedback-flash.scroll-fwd { background: linear-gradient(0deg, rgba(59, 130, 246, 0.1) 0%, transparent 60%); }
-.feedback-flash.scroll-back { background: linear-gradient(180deg, rgba(59, 130, 246, 0.1) 0%, transparent 60%); }
-.feedback-flash.capture { background: rgba(255, 255, 255, 0.1); }
-.feedback-flash.clear { background: rgba(239, 68, 68, 0.12); }
-.feedback-flash.slow-on { background: rgba(245, 158, 11, 0.1); }
-.feedback-flash.slow-off { background: rgba(139, 92, 246, 0.08); }
-.feedback-flash.history-prev { background: linear-gradient(90deg, rgba(139, 92, 246, 0.12) 0%, transparent 50%); }
-.feedback-flash.history-next { background: linear-gradient(270deg, rgba(139, 92, 246, 0.12) 0%, transparent 50%); }
-.feedback-flash.skip { background: rgba(239, 68, 68, 0.08); }
-.feedback-flash.cw-move { background: rgba(96, 165, 250, 0.08); }
-.feedback-flash.cw-resize { background: rgba(0, 229, 160, 0.08); }
+.card-body {
+  padding: 10px 14px 14px;
+  font-size: 0.88rem;
+  line-height: 1.65;
+  color: var(--text-primary);
+}
 
-/* ── CONNECTION OVERLAY ── */
+.card-tldr {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 12px;
+  line-height: 1.3;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--border-accent);
+}
+
+.card-meta {
+  padding: 0 14px 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  display: flex;
+  justify-content: space-between;
+}
+
+/* Card dismiss button */
+.card-dismiss {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1rem;
+  cursor: pointer;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+  z-index: 2;
+}
+
+.card:hover .card-dismiss,
+.card:active .card-dismiss {
+  opacity: 1;
+}
+
+/* ── Markdown Rendering Inside Cards ─────── */
+.func-word {
+  color: var(--text-muted);
+  font-size: 0.8em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 4px;
+  font-weight: 600;
+}
+
+.card-body h1, .card-body h2, .card-body h3 {
+  font-weight: 600;
+  margin: 0.6em 0 0.3em;
+  color: var(--text-primary);
+}
+
+.card-body h1 { font-size: 1rem; }
+.card-body h2 { font-size: 0.95rem; }
+.card-body h3 { font-size: 0.9rem; color: var(--accent); }
+
+.card-body p {
+  margin: 0.4em 0;
+}
+
+.card-body ul, .card-body ol {
+  padding-left: 1.3em;
+  margin: 0.4em 0;
+}
+
+.card-body li {
+  margin: 0.2em 0;
+}
+
+.card-body li::marker {
+  color: var(--accent);
+}
+
+.card-body strong {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.card-body em {
+  color: var(--text-secondary);
+}
+
+/* Inline code */
+.card-body code:not(.block-code) {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.82em;
+  background: var(--bg-code);
+  color: var(--accent);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+/* Code blocks */
+.code-block-wrapper {
+  margin: 0.6em 0;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--bg-code);
+}
+
+.code-block-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 12px;
+  background: rgba(255,255,255,0.03);
+  border-bottom: 1px solid var(--border);
+}
+
+.code-block-lang {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.code-block-copy {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border);
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.code-block-copy:active {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+pre.code-block {
+  margin: 0;
+  padding: 12px;
+  overflow-x: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--text-code);
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Horizontal rule / separator */
+.card-body hr {
+  border: none;
+  border-top: 1px dashed var(--border);
+  margin: 0.8em 0;
+}
+
+/* Streaming/loading card pulse */
+@keyframes card-pulse {
+  0%, 100% { border-color: var(--border-accent); }
+  50% { border-color: var(--accent); }
+}
+
+.card.streaming {
+  animation: card-pulse 1.5s ease-in-out infinite;
+}
+
+/* ══════════════════════════════════════════════
+   ANIMATIONS
+   ══════════════════════════════════════════════ */
+@keyframes card-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(20px) scale(0.97);
+    filter: blur(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes card-exit {
+  0% {
+    opacity: 1;
+    transform: translateX(0);
+    max-height: 500px;
+  }
+  50% {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  100% {
+    opacity: 0;
+    max-height: 0;
+    padding: 0;
+    margin: 0;
+    border-width: 0;
+  }
+}
+
+.card.removing {
+  animation: card-exit 0.4s ease-in forwards;
+}
+
+/* ══════════════════════════════════════════════
+   BOTTOM BAR — QUICK ACTIONS
+   ══════════════════════════════════════════════ */
+.bottom-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 10px 12px calc(var(--safe-bottom) + 10px);
+  background: linear-gradient(0deg, var(--bg-primary) 70%, transparent);
+  backdrop-filter: blur(8px);
+  z-index: 100;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.input-wrap {
+  flex: 1;
+  position: relative;
+}
+
+.input-field {
+  width: 100%;
+  padding: 11px 14px;
+  padding-right: 42px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text-primary);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.88rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.input-field::placeholder {
+  color: var(--text-muted);
+}
+
+.input-field:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+.send-btn {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: var(--bg-primary);
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.send-btn:active {
+  transform: translateY(-50%) scale(0.9);
+}
+
+.action-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.action-btn:active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: scale(0.93);
+}
+
+/* ══════════════════════════════════════════════
+   CONNECTION OVERLAY
+   ══════════════════════════════════════════════ */
 .connect-overlay {
-  position: fixed; inset: 0; background: #0a0e17;
-  z-index: 200; display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
+  position: fixed;
+  inset: 0;
+  background: var(--bg-primary);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
   transition: opacity 0.4s, visibility 0.4s;
 }
-.connect-overlay.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+
+.connect-overlay.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.connect-icon {
+  font-size: 3rem;
+  margin-bottom: 20px;
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
 
 .connect-title {
-  font-size: 14px; font-weight: 700;
-  color: #00e5a0; margin-bottom: 6px;
-  letter-spacing: 0.1em; text-transform: uppercase;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 8px;
+  letter-spacing: 0.05em;
 }
-.connect-sub { font-size: 13px; color: #8892a8; margin-bottom: 20px; }
+
+.connect-subtitle {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  text-align: center;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+.connect-input-group {
+  width: 100%;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
 
 .connect-input {
-  width: 260px; padding: 12px 16px; background: #111827;
-  border: 1px solid #1e2a3a; border-radius: 10px;
-  color: #e8ecf4; font-family: monospace;
-  font-size: 14px; text-align: center; outline: none;
-  margin-bottom: 10px;
+  width: 100%;
+  padding: 14px 16px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.9rem;
+  text-align: center;
+  outline: none;
 }
-.connect-input:focus { border-color: #00e5a0; }
+
+.connect-input:focus {
+  border-color: var(--accent);
+}
+
+/* Mode selector (segmented control) */
+.mode-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.mode-selector-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  text-align: center;
+}
+
+.mode-options {
+  display: flex;
+  gap: 8px;
+}
+
+.mode-option {
+  flex: 1;
+  padding: 10px 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-secondary);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  line-height: 1.3;
+}
+
+.mode-option .mode-sub {
+  display: block;
+  font-size: 0.6rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.mode-option.active {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.mode-option.active .mode-sub {
+  color: var(--accent);
+}
 
 .connect-btn {
-  padding: 10px 32px; background: #00e5a0; color: #0a0e17;
-  border: none; border-radius: 10px; font-weight: 700;
-  font-size: 14px; cursor: pointer;
+  padding: 14px;
+  background: var(--accent);
+  color: var(--bg-primary);
+  border: none;
+  border-radius: 12px;
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: transform 0.15s;
 }
-.connect-error { margin-top: 10px; font-size: 12px; color: #ef4444; min-height: 1.4em; }
+
+.connect-btn:active {
+  transform: scale(0.97);
+}
+
+.connect-error {
+  font-size: 0.78rem;
+  color: var(--status-disconnected);
+  text-align: center;
+  min-height: 1.2em;
+}
+
+/* ══════════════════════════════════════════════
+   SETTINGS PANEL (slide up)
+   ══════════════════════════════════════════════ */
+.settings-panel {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  border-radius: 20px 20px 0 0;
+  padding: 20px 16px calc(var(--safe-bottom) + 16px);
+  z-index: 150;
+  transform: translateY(100%);
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.settings-panel.open {
+  transform: translateY(0);
+}
+
+.settings-handle {
+  width: 36px;
+  height: 4px;
+  background: var(--text-muted);
+  border-radius: 2px;
+  margin: 0 auto 16px;
+}
+
+.settings-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 16px;
+}
+
+.setting-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.setting-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.setting-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  border-radius: 8px;
+  min-width: 80px;
+  text-align: center;
+  outline: none;
+}
+
+.setting-value:focus {
+  border-color: var(--accent);
+}
+
+.settings-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 149;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s;
+}
+
+.settings-backdrop.open {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* ══════════════════════════════════════════════
+   EMPTY STATE
+   ══════════════════════════════════════════════ */
+.empty-state {
+  text-align: center;
+  padding: 60px 24px;
+  color: var(--text-muted);
+}
+
+.empty-state-icon {
+  font-size: 2.5rem;
+  margin-bottom: 12px;
+  opacity: 0.5;
+}
+
+.empty-state-text {
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+/* ══════════════════════════════════════════════
+   SCROLLBAR (subtle)
+   ══════════════════════════════════════════════ */
+::-webkit-scrollbar { width: 3px; height: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 </style>
 </head>
+
 <body>
 
+<!-- ═══ CONNECTION OVERLAY ═══ -->
 <div class="connect-overlay" id="connectOverlay">
-  <div class="connect-title">Remote Control</div>
-  <div class="connect-sub">Conectar al servidor Screen-Assist</div>
-  <input class="connect-input" id="serverInput" type="text" placeholder="192.168.1.x:8765"
-    inputmode="url" autocomplete="off"
-    onkeydown="if(event.key==='Enter')doConnect()">
-  <button class="connect-btn" onclick="doConnect()">Conectar</button>
-  <div class="connect-error" id="connectError"></div>
+  <div class="connect-icon">⚡</div>
+  <div class="connect-title">SCREEN-ASSIST</div>
+  <div class="connect-subtitle">
+    Conectá a tu PC para recibir respuestas en tiempo real
+  </div>
+  <div class="connect-input-group">
+    <div class="mode-selector">
+      <span class="mode-selector-label">Modo de práctica</span>
+      <div class="mode-options">
+        <div class="mode-option" id="modeFull" onclick="selectMode('full')">
+          Entrevista + ejercicios
+          <span class="mode-sub">hablada · teleprompter</span>
+        </div>
+        <div class="mode-option active" id="modeExercises" onclick="selectMode('exercises')">
+          Solo ejercicios
+          <span class="mode-sub">código · output</span>
+        </div>
+      </div>
+    </div>
+    <input
+      class="connect-input"
+      id="serverInput"
+      type="text"
+      placeholder="192.168.1.x:8765"
+      value=""
+    >
+    <button class="connect-btn" id="connectBtn" onclick="connectToServer()">
+      Conectar
+    </button>
+    <div class="connect-error" id="connectError"></div>
+  </div>
 </div>
 
-<div class="status-bar" id="statusBar">
-  <div class="status-dot" id="statusDot"></div>
-  <div class="status-text" id="statusText">DISCONNECTED</div>
-  <div class="status-wpm" id="statusWpm"></div>
-  <div class="status-mode hidden" id="statusMode"></div>
+<!-- ═══ HEADER ═══ -->
+<header class="header">
+  <div class="header-left">
+    <div class="status-dot" id="statusDot"></div>
+    <div class="logo">Screen-Assist</div>
+  </div>
+  <div class="header-stats">
+    <span>Q:<span class="stat-value" id="statQueries">0</span></span>
+    <span>Skip:<span class="stat-value" id="statSkipped">0</span></span>
+    <span><span class="stat-value" id="statLatency">—</span>ms</span>
+  </div>
+</header>
+
+<!-- ═══ RESPONSE CARDS ═══ -->
+<main class="main" id="cardsContainer">
+  <div class="empty-state" id="emptyState">
+    <div class="empty-state-icon">📡</div>
+    <div class="empty-state-text">
+      Esperando respuestas...<br>
+      Tocá 📸 para capturar la pantalla, o escribí una pregunta abajo
+    </div>
+  </div>
+</main>
+
+<!-- ═══ BOTTOM BAR ═══ -->
+<div class="bottom-bar">
+  <div class="input-wrap">
+    <input 
+      class="input-field" 
+      id="askInput" 
+      type="text" 
+      placeholder="Pregunta directa..."
+      onkeydown="if(event.key==='Enter')sendQuestion()"
+    >
+    <button class="send-btn" onclick="sendQuestion()">↑</button>
+  </div>
+  <button class="action-btn" onclick="forceCapture()" title="Capturar pantalla">📸</button>
+  <button class="action-btn" onclick="toggleSettings()" title="Configuración">⚙️</button>
 </div>
 
-<div class="gesture-zone" id="gestureZone"></div>
-
-<div class="feedback-flash" id="feedbackFlash"></div>
+<!-- ═══ SETTINGS PANEL ═══ -->
+<div class="settings-backdrop" id="settingsBackdrop" onclick="toggleSettings()"></div>
+<div class="settings-panel" id="settingsPanel">
+  <div class="settings-handle"></div>
+  <div class="settings-title">Configuración</div>
+  
+  <div class="setting-row">
+    <span class="setting-label">Intervalo capturas (s)</span>
+    <input class="setting-value" id="setInterval" type="number" value="3" min="1" max="30" step="0.5"
+      onchange="updateSetting('screenshot_interval', this.value)">
+  </div>
+  <div class="setting-row">
+    <span class="setting-label">TTL respuestas (s)</span>
+    <input class="setting-value" id="setTTL" type="number" value="120" min="10" max="600" step="10"
+      onchange="cardTTL = parseInt(this.value) * 1000">
+  </div>
+  <div class="setting-row">
+    <span class="setting-label">Max tarjetas</span>
+    <input class="setting-value" id="setMaxCards" type="number" value="8" min="1" max="20"
+      onchange="maxCards = parseInt(this.value)">
+  </div>
+  <div class="setting-row">
+    <span class="setting-label">Auto-scroll</span>
+    <input class="setting-value" id="setAutoScroll" type="text" value="ON"
+      onclick="toggleAutoScroll(this)" readonly style="cursor:pointer">
+  </div>
+  <div class="setting-row">
+    <span class="setting-label">Limpiar historial</span>
+    <button class="setting-value" onclick="clearAll()" 
+      style="cursor:pointer;color:var(--status-disconnected);border-color:var(--status-disconnected)">
+      Limpiar
+    </button>
+  </div>
+</div>
 
 <script>
 /* ══════════════════════════════════════════════
-   STATE
+   APP STATE
    ══════════════════════════════════════════════ */
 let ws = null;
 let isConnected = false;
-let isPaused = false;
-let currentWpm = 150;
-let isSlowMode = false;
-let historyIndex = -1;   // -1 = live
-let historyTotal = 0;
+let cardTTL = 120000;      // 2 minutes default
+let maxCards = 8;
+let autoScroll = true;
+let totalQueries = 0;
+let totalSkipped = 0;
+let currentMode = 'exercises';  // 'full' = interview + exercises | 'exercises' = code practice only
 
 /* ══════════════════════════════════════════════
-   VISUAL + HAPTIC FEEDBACK
+   MODE SELECTION
    ══════════════════════════════════════════════ */
-function flash(type) {
-  const el = document.getElementById('feedbackFlash');
-  el.className = 'feedback-flash ' + type;
-  el.classList.add('active');
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      el.classList.remove('active');
-    });
-  });
+function selectMode(mode) {
+  currentMode = mode;
+  localStorage.setItem('sa_mode', mode);
+  document.getElementById('modeFull').classList.toggle('active', mode === 'full');
+  document.getElementById('modeExercises').classList.toggle('active', mode === 'exercises');
+  // If already connected, push the change to the server live
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ action: 'set_mode', value: mode }));
+  }
 }
 
-function vibrate(ms) {
-  if (navigator.vibrate) navigator.vibrate(ms);
-}
-
-function updateStatus() {
-  const txt = document.getElementById('statusText');
-  const wpmEl = document.getElementById('statusWpm');
-  const modeEl = document.getElementById('statusMode');
-
-  if (!isConnected) {
-    txt.textContent = 'DISCONNECTED';
-    txt.className = 'status-text';
-    wpmEl.textContent = '';
-    modeEl.className = 'status-mode hidden';
+/* ══════════════════════════════════════════════
+   WEBSOCKET CONNECTION
+   ══════════════════════════════════════════════ */
+function connectToServer() {
+  const input = document.getElementById('serverInput');
+  const errorEl = document.getElementById('connectError');
+  let addr = input.value.trim();
+  
+  if (!addr) {
+    errorEl.textContent = 'Ingresá la IP de tu PC';
     return;
   }
-
-  txt.textContent = isPaused ? 'PAUSED' : 'PLAYING';
-  txt.className = 'status-text' + (isPaused ? ' paused' : '');
-  wpmEl.textContent = currentWpm + ' WPM';
-
-  // Mode indicator: history nav takes priority, then slow mode
-  if (historyIndex >= 0) {
-    modeEl.textContent = '\u25C4 ' + (historyIndex + 1) + '/' + historyTotal + ' \u25BA';
-    modeEl.className = 'status-mode history';
-  } else if (isSlowMode) {
-    modeEl.textContent = 'SLOW MODE';
-    modeEl.className = 'status-mode slow';
-  } else {
-    modeEl.className = 'status-mode hidden';
+  
+  // Add ws:// if not present
+  if (!addr.startsWith('ws://') && !addr.startsWith('wss://')) {
+    addr = 'ws://' + addr;
   }
-}
-
-/* ══════════════════════════════════════════════
-   WEBSOCKET
-   ══════════════════════════════════════════════ */
-function doConnect() {
-  const input = document.getElementById('serverInput');
-  const err = document.getElementById('connectError');
-  let addr = input.value.trim();
-  if (!addr) { err.textContent = 'Ingresá la IP'; return; }
-  if (!addr.startsWith('ws://') && !addr.startsWith('wss://')) addr = 'ws://' + addr;
-  err.textContent = 'Conectando...';
-
+  
+  errorEl.textContent = 'Conectando...';
+  document.getElementById('connectBtn').textContent = 'Conectando...';
+  
   try {
     ws = new WebSocket(addr);
+    
     ws.onopen = () => {
       isConnected = true;
       document.getElementById('connectOverlay').classList.add('hidden');
       document.getElementById('statusDot').classList.add('connected');
-      localStorage.setItem('remote_server', addr);
-      updateStatus();
-      // Keepalive
+      
+      // Save address for reconnect
+      localStorage.setItem('sa_server', addr);
+
+      // Tell the server which practice mode we're in
+      ws.send(JSON.stringify({ action: 'set_mode', value: currentMode }));
+
+      // Ping interval to keep alive
       setInterval(() => {
-        if (ws?.readyState === 1) ws.send(JSON.stringify({ action: 'ping', timestamp: Date.now() }));
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ action: 'ping', timestamp: Date.now() }));
+        }
       }, 15000);
     };
-    ws.onmessage = e => {
-      try { handleServerMessage(JSON.parse(e.data)); } catch(ex) {}
+    
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        handleMessage(data);
+      } catch (e) {
+        console.error('Parse error:', e);
+      }
     };
+    
     ws.onclose = () => {
       isConnected = false;
-      document.getElementById('statusDot').classList.remove('connected');
-      updateStatus();
-      setTimeout(() => { if (!isConnected) doConnect(); }, 3000);
+      document.getElementById('statusDot').classList.remove('connected', 'processing');
+      
+      // Auto-reconnect after 3s
+      setTimeout(() => {
+        if (!isConnected) {
+          errorEl.textContent = 'Reconectando...';
+          connectToServer();
+        }
+      }, 3000);
     };
-    ws.onerror = () => { err.textContent = 'No se pudo conectar.'; };
-  } catch(e) { err.textContent = 'Error: ' + e.message; }
+    
+    ws.onerror = (err) => {
+      errorEl.textContent = 'No se pudo conectar. Verificá la IP y que el server esté corriendo.';
+      document.getElementById('connectBtn').textContent = 'Conectar';
+    };
+    
+  } catch (e) {
+    errorEl.textContent = 'Error: ' + e.message;
+    document.getElementById('connectBtn').textContent = 'Conectar';
+  }
 }
 
-function send(obj) {
-  if (ws?.readyState === 1) ws.send(JSON.stringify(obj));
-}
+/* ══════════════════════════════════════════════
+   ACTIVE CARD TRACKING — progressive updates
+   ══════════════════════════════════════════════ */
+let activeCard = null;       // The card currently being built
+let activeQuery = null;      // Query text of the active card
+let activeFullText = '';     // Accumulated text for streaming
+let activeHasPreview = false;
 
-function handleServerMessage(data) {
+/* ══════════════════════════════════════════════
+   MESSAGE HANDLER
+   ══════════════════════════════════════════════ */
+function handleMessage(data) {
   switch (data.type) {
-    case 'slow_mode_changed':
-      isSlowMode = data.enabled;
-      updateStatus();
-      break;
-
-    case 'history_item':
-      historyIndex = data.index;
-      historyTotal = data.total;
-      updateStatus();
-      break;
-
-    case 'history_live':
-      historyIndex = -1;
-      updateStatus();
-      break;
-
-    case 'audio_buffer_cleared':
-      // Confirmation — flash already shown on gesture
+    case 'connected':
+      if (data.stats) {
+        totalQueries = data.stats.total_queries || 0;
+        totalSkipped = data.stats.total_skipped || 0;
+        updateStats();
+      }
       break;
 
     case 'response_question':
-      // New live question arrived — auto-return from history nav
-      if (historyIndex >= 0) {
-        historyIndex = -1;
-        updateStatus();
+      // Transcription just arrived — show question immediately with loading state
+      document.getElementById('statusDot').classList.add('processing');
+      createPendingCard(data.query);
+      break;
+
+    case 'response_question_update':
+      // Haiku corrected the transcription — update the question text
+      if (activeCard) {
+        const queryEl = activeCard.querySelector('.card-query');
+        if (queryEl) queryEl.textContent = data.query;
       }
+      break;
+
+    case 'response_interrupted':
+      // The AI was generating but a clarification arrived
+      if (activeCard) {
+        const queryEl = activeCard.querySelector('.card-query');
+        if (queryEl) {
+          queryEl.style.transition = 'opacity 0.2s';
+          queryEl.style.opacity = '0.5';
+          setTimeout(() => {
+            queryEl.textContent = data.query;
+            queryEl.style.opacity = '1';
+          }, 200);
+        }
+        activeQuery = data.query;
+        activeFullText = '';
+        activeHasPreview = false;
+        
+        const body = activeCard.querySelector('[data-body]');
+        if (body) {
+          body.innerHTML = '<p style="color:var(--text-muted);font-style:italic">Recalculando con nueva información...</p>';
+        }
+      } else {
+        createPendingCard(data.query);
+      }
+      break;
+
+    case 'response_dismiss':
+      // Filter said skip/accumulate — remove the pending card
+      document.getElementById('statusDot').classList.remove('processing');
+      if (activeCard) {
+        removeCard(activeCard);
+        clearActiveCard();
+      }
+      break;
+
+    case 'response_preview':
+      // Haiku preview (~600ms) — candidate can start reading
+      updateCardWithPreview(data.query, data.answer);
+      break;
+
+    case 'response_chunk':
+      // Sonnet streaming chunk — append to card progressively
+      appendChunkToCard(data.query, data.chunk, data.chunk_index);
+      break;
+
+    case 'response':
+      // Final complete response — finalize the card
+      document.getElementById('statusDot').classList.remove('processing');
+      totalQueries++;
+      finalizeCard(data);
+      updateStats(data.latency_ms);
+      break;
+
+    case 'error':
+      document.getElementById('statusDot').classList.remove('processing');
+      clearActiveCard();
+      addErrorCard(data.message);
+      break;
+
+    case 'mode_changed':
+      if (data.mode === 'full' || data.mode === 'exercises') {
+        currentMode = data.mode;
+        document.getElementById('modeFull').classList.toggle('active', data.mode === 'full');
+        document.getElementById('modeExercises').classList.toggle('active', data.mode === 'exercises');
+      }
+      break;
+
+    case 'config_updated':
+      break;
+
+    case 'pong':
       break;
   }
 }
 
 /* ══════════════════════════════════════════════
-   GESTURE ENGINE
-   ─────────────────────────────────────────────
-   GESTURE ZONE (bottom 80%):
-     Tap          = pause / resume
-     Double tap   = force capture + AI analysis
-     Long press   = clear audio buffer
-     Drag vert    = scroll teleprompter
-     Swipe horiz  = history (right=prev, left=next)
-
-   STATUS BAR (top 20%):
-     Tap          = toggle slow mode
-     Double tap   = reset teleprompter width
-     Drag horiz   = adjust teleprompter width (right=wider, left=narrower)
+   CARD RENDERING — Progressive Flow
    ══════════════════════════════════════════════ */
-const gestureZone = document.getElementById('gestureZone');
 
-// Thresholds
-const TAP_MAX_MOVE = 12;
-const DRAG_THRESHOLD = 15;
-const SCROLL_SEND_THRESHOLD = 8;
-const DOUBLE_TAP_WINDOW = 350;   // ms between taps for double-tap
-const LONG_PRESS_MS = 600;       // ms hold for long press
-const SWIPE_MIN_PX = 60;         // min horizontal distance for swipe
-const SWIPE_MAX_MS = 400;        // max duration for swipe gesture
+// Stage 1: Question arrives from transcription (~0ms)
+function createPendingCard(query) {
+  const container = document.getElementById('cardsContainer');
+  const emptyState = document.getElementById('emptyState');
+  if (emptyState) emptyState.remove();
 
-// State — gesture zone (1 finger only)
-let startX = 0, startY = 0, startTime = 0;
-let lastY = 0;
-let isDragging = false;
-let gestureDirection = null;  // null | 'vertical' | 'horizontal'
-let longPressTimer = null;
-let longPressFired = false;
-let tapCount = 0;
-let tapTimer = null;
-let twoFingerWasUsed = false;  // blocks 1-finger gestures until clean new touch
+  // If there's already an active card, finalize it first
+  if (activeCard) {
+    finishActiveCardAsis();
+  }
 
-function cancelLongPress() {
-  if (longPressTimer) {
-    clearTimeout(longPressTimer);
-    longPressTimer = null;
+  // Enforce max cards
+  while (container.children.length >= maxCards) {
+    const oldest = container.firstElementChild;
+    if (oldest) removeCard(oldest);
+  }
+
+  const card = document.createElement('div');
+  card.className = 'card priority-quick streaming';  // streaming = pulsing border until finalized
+
+  const ttlBar = document.createElement('div');
+  ttlBar.className = 'card-ttl';
+  card.appendChild(ttlBar);
+
+  const dismissBtn = document.createElement('button');
+  dismissBtn.className = 'card-dismiss';
+  dismissBtn.textContent = '✕';
+  dismissBtn.onclick = () => { clearActiveCard(); removeCard(card); };
+  card.appendChild(dismissBtn);
+
+  const header = document.createElement('div');
+  header.className = 'card-header';
+  header.innerHTML = `
+    <div class="card-query">${escapeHtml(query)}</div>
+    <span class="card-badge quick" data-badge>...</span>
+  `;
+  card.appendChild(header);
+
+  // Body starts with a subtle loading indicator
+  const body = document.createElement('div');
+  body.className = 'card-body';
+  body.setAttribute('data-body', '');
+  body.innerHTML = '<p style="color:var(--text-muted);font-style:italic">Pensando...</p>';
+  card.appendChild(body);
+
+  // Meta (will be updated on finalize)
+  const meta = document.createElement('div');
+  meta.className = 'card-meta';
+  meta.setAttribute('data-meta', '');
+  const timeStr = new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  meta.innerHTML = `<span>${timeStr}</span><span data-latency>...</span>`;
+  card.appendChild(meta);
+
+  container.appendChild(card);
+
+  if (autoScroll) {
+    setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'end' }), 50);
+  }
+
+  activeCard = card;
+  activeQuery = query;
+  activeFullText = '';
+  activeHasPreview = false;
+}
+
+// Stage 2: Haiku preview arrives (~500-800ms) — candidate starts reading
+function updateCardWithPreview(query, preview) {
+  if (!activeCard) {
+    // No pending card — create one now
+    createPendingCard(query);
+  }
+
+  activeHasPreview = true;
+  activeFullText = preview;
+
+  const body = activeCard.querySelector('[data-body]');
+  if (body) {
+    body.innerHTML = renderMarkdown(preview) +
+      '<p style="color:var(--text-muted);font-style:italic;margin-top:0.5em;font-size:0.78rem">Generando respuesta completa...</p>';
+  }
+
+  if (autoScroll) {
+    setTimeout(() => activeCard.scrollIntoView({ behavior: 'smooth', block: 'end' }), 50);
   }
 }
 
-gestureZone.addEventListener('touchstart', e => {
-  e.preventDefault();
-  if (e.touches.length !== 1 || twoFingerActive) return;  // Only 1-finger gestures in this zone
-  twoFingerWasUsed = false;  // Clean 1-finger start — allow gestures again
-  const t = e.touches[0];
-  startX = t.clientX;
-  startY = t.clientY;
-  lastY = t.clientY;
-  startTime = Date.now();
-  isDragging = false;
-  gestureDirection = null;
-  longPressFired = false;
-
-  // Start long press timer
-  longPressTimer = setTimeout(() => {
-    longPressFired = true;
-    longPressTimer = null;
-    // ── LONG PRESS: Clear audio buffer ──
-    send({ action: 'clear_audio_buffer' });
-    flash('clear');
-    vibrate([50, 30, 50]);
-  }, LONG_PRESS_MS);
-}, { passive: false });
-
-gestureZone.addEventListener('touchmove', e => {
-  e.preventDefault();
-  if (e.touches.length !== 1 || twoFingerActive) return;
-  const t = e.touches[0];
-  const dx = t.clientX - startX;
-  const dy = t.clientY - startY;
-
-  // Cancel long press on any significant movement
-  if (Math.abs(dx) > TAP_MAX_MOVE || Math.abs(dy) > TAP_MAX_MOVE) {
-    cancelLongPress();
+// Stage 3: Sonnet streaming chunks — progressive text building
+function appendChunkToCard(query, chunk, chunkIndex) {
+  if (!activeCard) {
+    createPendingCard(query);
   }
 
-  // Lock direction on first significant movement
-  if (!gestureDirection && (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD)) {
-    gestureDirection = Math.abs(dx) > Math.abs(dy) ? 'horizontal' : 'vertical';
-    if (gestureDirection === 'vertical') lastY = t.clientY;
+  if (chunkIndex === 0 && activeHasPreview) {
+    // First Sonnet chunk after preview — Sonnet continues from preview
+    // The full text will be: preview + \n\n + sonnet text
+    activeFullText += '\n\n' + chunk;
+  } else if (chunkIndex === 0) {
+    // First chunk, no preview
+    activeFullText = chunk;
+  } else {
+    activeFullText += chunk;
   }
 
-  if (gestureDirection === 'vertical') {
-    isDragging = true;
-    const moved = t.clientY - lastY;
-    if (Math.abs(moved) >= SCROLL_SEND_THRESHOLD) {
-      send({ action: 'teleprompter_scroll', delta: -Math.round(moved * 1.5) });
-      lastY = t.clientY;
-    }
-  } else if (gestureDirection === 'horizontal') {
-    isDragging = true;
-    // Track but act on touchend
-  }
-}, { passive: false });
-
-gestureZone.addEventListener('touchend', e => {
-  e.preventDefault();
-  cancelLongPress();
-  if (e.touches.length > 0) return;
-
-  // If 2-finger gesture was active, discard this touchend entirely
-  if (twoFingerWasUsed) {
-    isDragging = false;
-    gestureDirection = null;
-    return;
+  const body = activeCard.querySelector('[data-body]');
+  if (body) {
+    body.innerHTML = renderMarkdown(activeFullText);
   }
 
-  const elapsed = Date.now() - startTime;
-  const endX = e.changedTouches[0]?.clientX || startX;
-  const totalDx = endX - startX;
+  if (autoScroll) {
+    activeCard.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }
+}
 
-  // Long press already handled
-  if (longPressFired) {
-    isDragging = false;
-    gestureDirection = null;
-    return;
+// Stage 4: Final response — finalize card with complete answer + metadata
+function finalizeCard(data) {
+  if (!activeCard) {
+    // No active card (e.g., Haiku direct answer with no prior question broadcast)
+    createPendingCard(data.query);
   }
 
-  // ── HORIZONTAL SWIPE: History navigation ──
-  // Right = go back (prev), Left = go forward (next)
-  if (gestureDirection === 'horizontal' && Math.abs(totalDx) > SWIPE_MIN_PX && elapsed < SWIPE_MAX_MS) {
-    if (totalDx > 0) {
-      send({ action: 'history_navigate', direction: 'prev' });
-      flash('history-prev');
-      vibrate(20);
-    } else {
-      send({ action: 'history_navigate', direction: 'next' });
-      flash('history-next');
-      vibrate(20);
-    }
-    isDragging = false;
-    gestureDirection = null;
-    return;
+  const card = activeCard;
+
+  // Remove streaming state, set final priority class
+  card.className = `card priority-${data.priority || 'quick'}`;
+
+  // Update badge
+  const badge = card.querySelector('[data-badge]');
+  if (badge) {
+    badge.className = `card-badge ${data.priority || 'quick'}`;
+    badge.textContent = data.priority === 'deep' ? '🧠 deep' : '⚡ quick';
   }
 
-  // ── VERTICAL DRAG end ──
-  if (gestureDirection === 'vertical' && isDragging) {
-    vibrate(10);
-    isDragging = false;
-    gestureDirection = null;
-    return;
+  // Update query text (may have been corrected by Haiku)
+  const queryEl = card.querySelector('.card-query');
+  if (queryEl && data.query) {
+    queryEl.textContent = data.query;
   }
 
-  // ── TAP / DOUBLE TAP detection ──
-  if (!isDragging && elapsed < 400) {
-    tapCount++;
-    if (tapCount === 1) {
-      tapTimer = setTimeout(() => {
-        tapCount = 0;
-        // ── SINGLE TAP: Toggle pause ──
-        isPaused = !isPaused;
-        send({ action: 'teleprompter_pause' });
-        flash(isPaused ? 'pause' : 'resume');
-        vibrate(isPaused ? [30, 50, 30] : 15);
-        updateStatus();
-      }, DOUBLE_TAP_WINDOW);
-    } else if (tapCount >= 2) {
-      // ── DOUBLE TAP: Force capture + AI ──
-      clearTimeout(tapTimer);
-      tapCount = 0;
-      send({ action: 'force_capture' });
-      flash('capture');
-      vibrate([20, 40, 20]);
-    }
+  // Set final body content
+  const body = card.querySelector('[data-body]');
+  if (body) {
+    body.innerHTML = renderMarkdown(data.answer || activeFullText || '');
   }
 
-  isDragging = false;
-  gestureDirection = null;
-}, { passive: false });
+  // Update meta with latency
+  const meta = card.querySelector('[data-meta]');
+  if (meta) {
+    const timeStr = new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    meta.innerHTML = `
+      <span>${timeStr} · ${data.model || '?'}</span>
+      <span>${data.latency_ms || '?'}ms</span>
+    `;
+  }
+
+  // Start TTL countdown
+  const ttlBar = card.querySelector('.card-ttl');
+  if (ttlBar) {
+    ttlBar.style.transition = `transform ${cardTTL}ms linear`;
+    requestAnimationFrame(() => { ttlBar.style.transform = 'scaleX(0)'; });
+  }
+  card._ttlTimer = setTimeout(() => removeCard(card), cardTTL);
+
+  // Setup copy buttons
+  setupCopyButtons(card);
+
+  if (autoScroll) {
+    setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'end' }), 50);
+  }
+
+  clearActiveCard();
+}
+
+// Helper: finish active card as-is (when a new question arrives before previous finished)
+function finishActiveCardAsis() {
+  if (!activeCard) return;
+  const card = activeCard;
+
+  const body = card.querySelector('[data-body]');
+  if (body && activeFullText) {
+    body.innerHTML = renderMarkdown(activeFullText);
+  }
+
+  const ttlBar = card.querySelector('.card-ttl');
+  if (ttlBar) {
+    ttlBar.style.transition = `transform ${cardTTL}ms linear`;
+    requestAnimationFrame(() => { ttlBar.style.transform = 'scaleX(0)'; });
+  }
+  card._ttlTimer = setTimeout(() => removeCard(card), cardTTL);
+  setupCopyButtons(card);
+  clearActiveCard();
+}
+
+function clearActiveCard() {
+  activeCard = null;
+  activeQuery = null;
+  activeFullText = '';
+  activeHasPreview = false;
+}
+
+function setupCopyButtons(card) {
+  card.querySelectorAll('.code-block-copy').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const code = btn.closest('.code-block-wrapper').querySelector('.code-block').textContent;
+      navigator.clipboard.writeText(code).then(() => {
+        btn.textContent = '✓';
+        setTimeout(() => btn.textContent = 'Copy', 1500);
+      });
+    });
+  });
+}
+
+function addErrorCard(message) {
+  const container = document.getElementById('cardsContainer');
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.style.borderColor = 'var(--status-disconnected)';
+  card.innerHTML = `
+    <div class="card-ttl" style="background:var(--status-disconnected)"></div>
+    <div class="card-body" style="color:var(--status-disconnected);font-size:0.82rem">
+      ⚠️ ${escapeHtml(message)}
+    </div>
+  `;
+  container.appendChild(card);
+  setTimeout(() => removeCard(card), 10000);
+}
+
+function removeCard(card) {
+  if (card._ttlTimer) clearTimeout(card._ttlTimer);
+  card.classList.add('removing');
+  setTimeout(() => card.remove(), 450);
+}
 
 /* ══════════════════════════════════════════════
-   TWO-FINGER GESTURES (code window)
-   ─────────────────────────────────────────────
-   2-finger scroll        = move code window (dx/dy)
-   2-finger hold (static) = resize mode (PC cursor controls size)
+   MARKDOWN RENDERER (lightweight, no deps)
    ══════════════════════════════════════════════ */
-const CW_MOVE_THRESHOLD = 6;        // px of finger movement before sending move
-const CW_HOLD_STATIC_MS = 400;      // ms fingers must stay still to enter resize mode
+function renderMarkdown(text) {
+  if (!text) return '';
+  
+  let html = escapeHtml(text);
 
-let twoFingerActive = false;
-let twoFingerStartMidX = 0, twoFingerStartMidY = 0;
-let twoFingerLastMidX = 0, twoFingerLastMidY = 0;
-let twoFingerMoved = false;
-let cwResizeMode = false;
-let cwHoldTimer = null;
+  // English detection for localized flow words and headings
+  const isEng = (() => {
+    const textLower = (text + ' ' + (activeQuery || '')).toLowerCase();
+    const enWords = /\b(what|how|why|who|is|are|the|and|to|of|in|that|it|for|on|with|as|a|an)\b/g;
+    const esWords = /\b(el|la|los|las|un|una|que|de|en|por|para|con|como|es|son|cual|lo)\b/g;
+    const enCount = (textLower.match(enWords) || []).length;
+    const esCount = (textLower.match(esWords) || []).length;
+    return enCount >= esCount; // default to English on tie or 0
+  })();
 
-function cancelCwHold() {
-  if (cwHoldTimer) { clearTimeout(cwHoldTimer); cwHoldTimer = null; }
-}
-
-function twoFingerMid(touches) {
-  return {
-    x: (touches[0].clientX + touches[1].clientX) / 2,
-    y: (touches[0].clientY + touches[1].clientY) / 2
+  // Strip teleprompter section markers (teleprompter uses these, mobile shows as sections)
+  html = html.replace(/\[PARAGRAPH\]\n?/g, '');
+  html = html.replace(/\[CONCEPTS\]\n?/g, isEng ? '### Key Concepts\n' : '### Conceptos Clave\n');
+  html = html.replace(/\[EXAMPLES\]\n?/g, isEng ? '### Examples\n' : '### Ejemplos\n');
+  
+  // Code blocks with language (```lang\n...\n```)
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    const displayLang = lang || 'code';
+    return `<div class="code-block-wrapper">
+      <div class="code-block-header">
+        <span class="code-block-lang">${displayLang}</span>
+        <button class="code-block-copy">Copy</button>
+      </div>
+      <pre class="code-block"><code class="block-code">${code.trim()}</code></pre>
+    </div>`;
+  });
+  
+  // Code blocks without language
+  html = html.replace(/```\n?([\s\S]*?)```/g, (_, code) => {
+    return `<div class="code-block-wrapper">
+      <div class="code-block-header">
+        <span class="code-block-lang">code</span>
+        <button class="code-block-copy">Copy</button>
+      </div>
+      <pre class="code-block"><code class="block-code">${code.trim()}</code></pre>
+    </div>`;
+  });
+  
+  // Inline code
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  
+  // Headers
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  
+  // Cognitive color parsing for **N:word** (Teleprompter format)
+  const kwColors = [
+    'var(--accent)',  // 0 = default/ungrouped
+    '#c084fc',        // 1 = tecnologías/conceptos (violeta)
+    '#fb923c',        // 2 = métricas/números (naranja)
+    '#00e5a0',        // 3 = verbos de acción (verde)
+    '#f472b6',        // 4 = contraste/giro (rosa)
+    '#60a5fa',        // 5 = detalles técnicos (azul)
+    '#4ade80',        // 6 = positivo/ganancia (verde claro)
+    '#f87171',        // 7 = negativo/riesgo (rojo claro)
+  ];
+  
+  html = html.replace(/\*\*(\d+):([^*]+)\*\*/g, (_, groupNum, word) => {
+    const color = kwColors[parseInt(groupNum) % kwColors.length];
+    return `<strong style="color: ${color}">${word}</strong>`;
+  });
+  
+  // Standard Bold & italic (for **word** without numbers)
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  
+  // Flow symbols to function words
+  const flowSymbols = isEng ? {
+    '→': 'leads to',
+    '⇒': 'impact:',
+    '>>': 'better than',
+    '⇋': 'trade-off',
+    '↻': 'cycle',
+    '↳': 'detail:'
+  } : {
+    '→': 'lleva a',
+    '⇒': 'impacto:',
+    '>>': 'mejor que',
+    '⇋': 'trade-off',
+    '↻': 'ciclo',
+    '↳': 'detalle:'
   };
+  
+  html = html.replace(/[→⇒⇋↻↳]|>>/g, match => {
+    const word = flowSymbols[match];
+    return `<span class="func-word">${word}</span>`;
+  });
+  
+  // Horizontal rule
+  html = html.replace(/^---$/gm, '<hr>');
+  
+  // Unordered lists
+  html = html.replace(/^[\s]*[-•] (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>');
+  
+  // Ordered lists  
+  html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+  
+  // Paragraphs (lines that aren't already wrapped)
+  html = html.replace(/^(?!<[hulop\d]|<div|<pre)(.+)$/gm, '<p>$1</p>');
+  
+  // Clean up empty paragraphs
+  html = html.replace(/<p>\s*<\/p>/g, '');
+  
+  return html;
 }
 
-document.addEventListener('touchstart', e => {
-  if (e.target.closest('.connect-overlay')) return;
-  if (e.touches.length === 2) {
-    e.preventDefault();
-    twoFingerActive = true;
-    twoFingerMoved = false;
-    twoFingerWasUsed = true;
-    cwResizeMode = false;
-    const mid = twoFingerMid(e.touches);
-    twoFingerStartMidX = mid.x;
-    twoFingerStartMidY = mid.y;
-    twoFingerLastMidX = mid.x;
-    twoFingerLastMidY = mid.y;
-
-    // Cancel any 1-finger gesture in progress
-    cancelLongPress();
-    isDragging = false;
-    gestureDirection = null;
-    longPressFired = false;
-
-    // Start hold timer for resize mode
-    cwHoldTimer = setTimeout(() => {
-      cwHoldTimer = null;
-      if (twoFingerActive && !twoFingerMoved) {
-        cwResizeMode = true;
-        send({ action: 'code_window_resize_start' });
-        flash('cw-resize');
-        vibrate([30, 20, 30]);
-      }
-    }, CW_HOLD_STATIC_MS);
-  }
-}, { passive: false });
-
-document.addEventListener('touchmove', e => {
-  if (e.target.closest('.connect-overlay')) return;
-  if (twoFingerActive && e.touches.length === 2) {
-    e.preventDefault();
-
-    if (cwResizeMode) return; // In resize mode, PC cursor does the work
-
-    const mid = twoFingerMid(e.touches);
-    const dx = mid.x - twoFingerLastMidX;
-    const dy = mid.y - twoFingerLastMidY;
-
-    if (Math.abs(mid.x - twoFingerStartMidX) > CW_MOVE_THRESHOLD ||
-        Math.abs(mid.y - twoFingerStartMidY) > CW_MOVE_THRESHOLD) {
-      twoFingerMoved = true;
-      cancelCwHold();
-    }
-
-    if (twoFingerMoved && (Math.abs(dx) >= CW_MOVE_THRESHOLD || Math.abs(dy) >= CW_MOVE_THRESHOLD)) {
-      send({ action: 'code_window_move', dx: Math.round(dx * 2), dy: Math.round(dy * 2) });
-      twoFingerLastMidX = mid.x;
-      twoFingerLastMidY = mid.y;
-    }
-  }
-}, { passive: false });
-
-document.addEventListener('touchend', e => {
-  if (e.target.closest('.connect-overlay')) return;
-  if (twoFingerActive && e.touches.length < 2) {
-    cancelCwHold();
-    if (cwResizeMode) {
-      send({ action: 'code_window_resize_stop' });
-      cwResizeMode = false;
-    }
-    twoFingerActive = false;
-    twoFingerMoved = false;
-  }
-}, { passive: false });
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
 
 /* ══════════════════════════════════════════════
-   STATUS BAR GESTURES
-   Tap = slow mode | Double tap = reset width | Drag horiz = width
+   USER ACTIONS
    ══════════════════════════════════════════════ */
-const statusBar = document.getElementById('statusBar');
-let sbStartX = 0, sbStartTime = 0, sbDragging = false, sbLastX = 0;
-let sbTapCount = 0, sbTapTimer = null;
-const SB_DOUBLE_TAP_WINDOW = 350;
-const SB_WIDTH_STEP = 20; // px of horizontal drag per width step
+function sendQuestion() {
+  const input = document.getElementById('askInput');
+  const query = input.value.trim();
+  if (!query || !ws || ws.readyState !== WebSocket.OPEN) return;
+  
+  document.getElementById('statusDot').classList.add('processing');
+  
+  ws.send(JSON.stringify({
+    action: 'ask',
+    query: query,
+    with_image: true,
+    priority: query.length > 80 ? 'deep' : 'quick',
+  }));
+  
+  input.value = '';
+}
 
-statusBar.addEventListener('touchstart', e => {
-  if (!isConnected) return;
-  e.preventDefault();
-  e.stopPropagation();
-  if (e.touches.length !== 1) return;
-  sbStartX = e.touches[0].clientX;
-  sbLastX = sbStartX;
-  sbStartTime = Date.now();
-  sbDragging = false;
-}, { passive: false });
+function forceCapture() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
-statusBar.addEventListener('touchmove', e => {
-  if (!isConnected) return;
-  e.preventDefault();
-  e.stopPropagation();
-  if (e.touches.length !== 1) return;
-  const dx = e.touches[0].clientX - sbStartX;
-  if (!sbDragging && Math.abs(dx) > DRAG_THRESHOLD) {
-    sbDragging = true;
-    sbLastX = e.touches[0].clientX;
+  document.getElementById('statusDot').classList.add('processing');
+
+  const query = currentMode === 'exercises'
+    ? 'Resolvé el ejercicio de programación que se ve en la pantalla. Si pide la salida de un código, dame la salida exacta y la traza paso a paso; si pide escribir código, dame la solución completa y su complejidad.'
+    : '¿Qué ves en la pantalla? Describí lo relevante para el contexto de programación.';
+
+  ws.send(JSON.stringify({
+    action: 'force_capture',
+    query: query,
+    priority: 'deep',
+  }));
+}
+
+function updateSetting(key, value) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ action: 'set_interval', value: parseFloat(value) }));
+}
+
+function toggleSettings() {
+  document.getElementById('settingsPanel').classList.toggle('open');
+  document.getElementById('settingsBackdrop').classList.toggle('open');
+}
+
+function toggleAutoScroll(el) {
+  autoScroll = !autoScroll;
+  el.value = autoScroll ? 'ON' : 'OFF';
+  el.style.color = autoScroll ? 'var(--accent)' : 'var(--text-muted)';
+}
+
+function clearAll() {
+  const container = document.getElementById('cardsContainer');
+  container.innerHTML = '';
+  
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ action: 'clear_history' }));
   }
-  if (sbDragging) {
-    const moved = e.touches[0].clientX - sbLastX;
-    if (Math.abs(moved) >= SB_WIDTH_STEP) {
-      // Drag right = wider, drag left = narrower (intuitive: "stretch to expand")
-      const direction = moved > 0 ? 'wider' : 'narrower';
-      send({ action: 'teleprompter_width', direction });
-      flash(direction === 'wider' ? 'resume' : 'pause');
-      vibrate(8);
-      sbLastX = e.touches[0].clientX;
-    }
+  
+  toggleSettings();
+}
+
+function updateStats(latency) {
+  document.getElementById('statQueries').textContent = totalQueries;
+  document.getElementById('statSkipped').textContent = totalSkipped;
+  if (latency) {
+    document.getElementById('statLatency').textContent = latency;
   }
-}, { passive: false });
-
-statusBar.addEventListener('touchend', e => {
-  if (!isConnected) return;
-  e.preventDefault();
-  e.stopPropagation();
-  const elapsed = Date.now() - sbStartTime;
-
-  if (!sbDragging && elapsed < 400) {
-    sbTapCount++;
-    if (sbTapCount === 1) {
-      sbTapTimer = setTimeout(() => {
-        sbTapCount = 0;
-        // ── SINGLE TAP: Toggle slow mode ──
-        isSlowMode = !isSlowMode;
-        send({ action: 'set_slow_mode', enabled: isSlowMode });
-        flash(isSlowMode ? 'slow-on' : 'slow-off');
-        vibrate(isSlowMode ? [20, 30, 20] : 15);
-        updateStatus();
-      }, SB_DOUBLE_TAP_WINDOW);
-    } else if (sbTapCount >= 2) {
-      // ── DOUBLE TAP: Reset width ──
-      clearTimeout(sbTapTimer);
-      sbTapCount = 0;
-      send({ action: 'teleprompter_width', direction: 'reset' });
-      flash('capture');
-      vibrate([15, 30, 15]);
-    }
-  }
-  sbDragging = false;
-}, { passive: false });
-
-// Prevent pull-to-refresh and other default touch behaviors globally
-document.addEventListener('touchmove', e => {
-  if (e.target.closest('.connect-overlay')) return;
-  e.preventDefault();
-}, { passive: false });
+}
 
 /* ══════════════════════════════════════════════
    INIT
    ══════════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', () => {
-  const saved = localStorage.getItem('remote_server');
-  if (saved) document.getElementById('serverInput').value = saved.replace('ws://', '');
-  updateStatus();
+  // Restore saved practice mode (defaults to exercises-only)
+  const savedMode = localStorage.getItem('sa_mode');
+  if (savedMode === 'full' || savedMode === 'exercises') {
+    selectMode(savedMode);
+  }
 
-  // Fullscreen on first tap (mobile browsers)
-  document.body.addEventListener('click', () => {
-    if (document.fullscreenEnabled && !document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
-    }
-  }, { once: true });
+  // Try to auto-connect with saved address
+  const saved = localStorage.getItem('sa_server');
+  if (saved) {
+    document.getElementById('serverInput').value = saved.replace('ws://', '');
+  }
+  
+  // Demo mode: if URL has ?demo, show sample cards
+  if (location.search.includes('demo')) {
+    document.getElementById('connectOverlay').classList.add('hidden');
+    
+    setTimeout(() => addResponseCard({
+      query: '¿Cuál es la complejidad de este approach?',
+      answer: '**O(n log n)** — Estás usando un sort antes del two-pointer, eso domina.\n\n- El sort es `O(n log n)`\n- El two-pointer scan es `O(n)`\n- Espacio: `O(1)` extra (si usás in-place sort)\n\n---\n\nSi necesitás `O(n)`, considerá un **HashMap** approach:\n```python\ndef two_sum(nums, target):\n    seen = {}\n    for i, n in enumerate(nums):\n        comp = target - n\n        if comp in seen:\n            return [seen[comp], i]\n        seen[n] = i\n```',
+      priority: 'quick',
+      latency_ms: 1840,
+    }), 500);
+    
+    setTimeout(() => addResponseCard({
+      query: '¿Cómo optimizo esta query SQL que está tardando mucho?',
+      answer: '**Problema principal**: el `JOIN` sin índice en `orders.user_id`.\n\n- Agregá un índice: `CREATE INDEX idx_orders_user ON orders(user_id)`\n- El `WHERE` con `LIKE \'%text%\'` no puede usar índice — usá **full-text search** si es frecuente\n- El `SELECT *` trae columnas innecesarias, especificá solo las que necesitás\n\n---\n\nQuery optimizada:\n```sql\nSELECT u.name, o.total\nFROM users u\nJOIN orders o ON o.user_id = u.id\nWHERE o.created_at > NOW() - INTERVAL 30 DAY\nLIMIT 100;\n```\n\nCon el índice, debería bajar de ~2s a <50ms.',
+      priority: 'deep',
+      latency_ms: 4200,
+    }), 2000);
+  }
 });
 </script>
+
 </body>
 </html>
