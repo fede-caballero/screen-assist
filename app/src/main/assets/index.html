@@ -1388,8 +1388,6 @@ function removeCard(card) {
 function renderMarkdown(text) {
   if (!text) return '';
   
-  let html = escapeHtml(text);
-
   // English detection for localized flow words and headings
   const isEng = (() => {
     const textLower = (text + ' ' + (activeQuery || '')).toLowerCase();
@@ -1400,37 +1398,38 @@ function renderMarkdown(text) {
     return enCount >= esCount; // default to English on tie or 0
   })();
 
+  // ── Protect code BEFORE any inline markdown processing ──
+  // Code blocks are pulled out to placeholders so the bold/italic/list/paragraph
+  // rules never touch them. Otherwise `i**2` loses its `**` (eaten by the bold
+  // regex) and every code line gets wrapped in <p>, adding huge vertical gaps.
+  const codeBlocks = [];
+  let src = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+    const displayLang = lang || 'code';
+    const clean = code.replace(/^\n+/, '').replace(/\s+$/, '');
+    codeBlocks.push(`<div class="code-block-wrapper">
+      <div class="code-block-header">
+        <span class="code-block-lang">${escapeHtml(displayLang)}</span>
+        <button class="code-block-copy">Copy</button>
+      </div>
+      <pre class="code-block"><code class="block-code">${escapeHtml(clean)}</code></pre>
+    </div>`);
+    return `CB${codeBlocks.length - 1}`;
+  });
+
+  const inlineCodes = [];
+  src = src.replace(/`([^`]+)`/g, (_, code) => {
+    inlineCodes.push(`<code>${escapeHtml(code)}</code>`);
+    return `IC${inlineCodes.length - 1}`;
+  });
+
+  // Escape the remaining (non-code) text, then run markdown rules on it
+  let html = escapeHtml(src);
+
   // Strip teleprompter section markers (teleprompter uses these, mobile shows as sections)
   html = html.replace(/\[PARAGRAPH\]\n?/g, '');
   html = html.replace(/\[CONCEPTS\]\n?/g, isEng ? '### Key Concepts\n' : '### Conceptos Clave\n');
   html = html.replace(/\[EXAMPLES\]\n?/g, isEng ? '### Examples\n' : '### Ejemplos\n');
-  
-  // Code blocks with language (```lang\n...\n```)
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
-    const displayLang = lang || 'code';
-    return `<div class="code-block-wrapper">
-      <div class="code-block-header">
-        <span class="code-block-lang">${displayLang}</span>
-        <button class="code-block-copy">Copy</button>
-      </div>
-      <pre class="code-block"><code class="block-code">${code.trim()}</code></pre>
-    </div>`;
-  });
-  
-  // Code blocks without language
-  html = html.replace(/```\n?([\s\S]*?)```/g, (_, code) => {
-    return `<div class="code-block-wrapper">
-      <div class="code-block-header">
-        <span class="code-block-lang">code</span>
-        <button class="code-block-copy">Copy</button>
-      </div>
-      <pre class="code-block"><code class="block-code">${code.trim()}</code></pre>
-    </div>`;
-  });
-  
-  // Inline code
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-  
+
   // Headers
   html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
   html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
@@ -1494,7 +1493,12 @@ function renderMarkdown(text) {
   
   // Clean up empty paragraphs
   html = html.replace(/<p>\s*<\/p>/g, '');
-  
+
+  // ── Reinsert protected code (strip any <p> the paragraph rule wrapped it in) ──
+  html = html.replace(/<p>\s*CB(\d+)\s*<\/p>/g, (_, i) => codeBlocks[i]);
+  html = html.replace(/CB(\d+)/g, (_, i) => codeBlocks[i]);
+  html = html.replace(/IC(\d+)/g, (_, i) => inlineCodes[i]);
+
   return html;
 }
 
